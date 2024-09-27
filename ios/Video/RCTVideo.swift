@@ -5,6 +5,7 @@ import Foundation
     import GoogleInteractiveMediaAds
 #endif
 import React
+import PallyConFPSSDK
 
 // MARK: - RCTVideo
 
@@ -17,6 +18,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
 
     private var _playerViewController: RCTVideoPlayerViewController?
     private var _videoURL: NSURL?
+    private var _localSourceEncryptionKeyScheme: String?
 
     /* Required to publish events */
     private var _eventDispatcher: RCTEventDispatcher?
@@ -28,6 +30,8 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
 
     /* For sending videoProgress events */
     private var _controls = false
+    
+    var _pallyconsdk: PallyConFPSSDK?
 
     /* Keep track of any modifiers, need to be applied after each play */
     private var _audioOutput: String = "speaker"
@@ -251,6 +255,9 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
             object: nil
         )
         _playerObserver._handlers = self
+        
+        _pallyconsdk = PallyConFPSSDK()
+        
         #if USE_VIDEO_CACHING
             _videoCache.playerItemPrepareText = playerItemPrepareText
         #endif
@@ -547,6 +554,53 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
             return
         }
         self.isSetSourceOngoing = true
+        
+        let videoSource = VideoSource(source)
+        guard let pallyConJsonString = videoSource.requestHeaders?["PallyConJson"] as? String,
+              let data = Data(base64Encoded: pallyConJsonString) else {
+            print("Error: Cannot decode Base64 string")
+            return
+        }
+        var playerItem: AVPlayerItem?
+        do {
+            guard let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
+                print("Failed to parse JSON")
+                return
+            }
+
+            if let contentUrl = json["url"] as? String,
+               let drmConfig = json["drmConfig"] as? [String: Any] {
+                
+                let siteId = drmConfig["siteId"] as? String ?? ""
+                let contentId = drmConfig["contentId"] as? String ?? ""
+                let drmLicenseUrl = drmConfig["drmLicenseUrl"] as? String ?? ""
+                let token = drmConfig["token"] as? String ?? ""
+                let customData = drmConfig["customData"] as? String ?? ""
+                var certificateUrl = drmConfig["certificateUrl"] as? String ?? ""
+                if certificateUrl == "" || certificateUrl.isEmpty || certificateUrl == String() {
+                    certificateUrl = "https://license-global.pallycon.com/ri/fpsKeyManager.do?siteId=" + siteId
+                }
+                
+                guard let url = URL(string: contentUrl) else {
+                    print("Invalid content URL")
+                    return
+                }
+                
+                let urlAsset = AVURLAsset(url: url)
+                playerItem = AVPlayerItem(asset: urlAsset)
+                let config = PallyConDrmConfiguration(avURLAsset: urlAsset,
+                                                      contentId: contentId,
+                                                      certificateUrl: certificateUrl,
+                                                      authData: token,
+                                                      delegate: self,
+                                                      licenseUrl: drmLicenseUrl)
+                _pallyconsdk?.prepare(Content: config)
+            } else {
+                print("Missing or invalid 'url' or 'drmConfig' in JSON")
+            }
+        } catch {
+            print("Error parsing JSON: \(error.localizedDescription)")
+        }
 
         let initializeSource = {
             self._source = VideoSource(source)
@@ -1469,16 +1523,24 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         }
 
         guard let _playerItem else { return }
+        let error = _playerItem.error as NSError?
+        var errorCode = error?.code ?? 0
+        var errorMessage = error?.localizedDescription ?? ""
+        
+        // 특정 오류 코드에 대한 처리
+        if errorCode == -42656 || errorCode == -42800 {
+            errorCode = 50000
+            errorMessage = "expired"
+        }
+        
         onVideoError?(
             [
                 "error": [
-                    "code": NSNumber(value: (_playerItem.error! as NSError).code),
-                    "localizedDescription": _playerItem.error?.localizedDescription == nil ? "" : _playerItem.error?.localizedDescription as Any,
-                    "localizedFailureReason": ((_playerItem.error! as NSError).localizedFailureReason == nil ?
-                        "" : (_playerItem.error! as NSError).localizedFailureReason) ?? "",
-                    "localizedRecoverySuggestion": ((_playerItem.error! as NSError).localizedRecoverySuggestion == nil ?
-                        "" : (_playerItem.error! as NSError).localizedRecoverySuggestion) ?? "",
-                    "domain": (_playerItem.error as! NSError).domain,
+                    "code": NSNumber(value: errorCode),
+                    "localizedDescription": errorMessage,
+                    "localizedFailureReason": error?.localizedFailureReason ?? "",
+                    "localizedRecoverySuggestion": error?.localizedRecoverySuggestion ?? "",
+                    "domain": error?.domain ?? "",
                 ],
                 "target": reactTag as Any,
             ]

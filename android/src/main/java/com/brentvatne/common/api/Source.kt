@@ -88,6 +88,16 @@ class Source {
             )
     }
 
+    fun updateUri(newUri: Uri?) {
+        if (newUri != null) {
+            this.uri = newUri
+            this.uriString = newUri.toString()
+        } else {
+            this.uri = null
+            this.uriString = null
+        }
+    }
+
     /** return true if this and src are equals  */
     fun isEquals(source: Source): Boolean = this == source
 
@@ -140,6 +150,7 @@ class Source {
     companion object {
         private const val TAG = "Source"
         private const val PROP_SRC_URI = "uri"
+        private const val PROP_SRC_JSON = "json"
         private const val PROP_SRC_START_POSITION = "startPosition"
         private const val PROP_SRC_CROP_START = "cropStart"
         private const val PROP_SRC_CROP_END = "cropEnd"

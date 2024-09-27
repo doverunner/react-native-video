@@ -199,6 +199,7 @@ def reactNativeArchitectures() {
 
 repositories {
     google()
+    mavenLocal()
     maven {
         // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
         url "$rootDir/../node_modules/react-native/android"
@@ -218,6 +219,12 @@ dependencies {
 
     implementation "androidx.core:core-ktx:$androidxCore_version"
     implementation "androidx.activity:activity-ktx:$androidxActivity_version"
+
+    // pallycon widevine
+    implementation "com.pallycon:widevine:4.3.1"
+
+    // Gson
+    implementation "com.google.code.gson:gson:2.11"
 
     // For media playback using ExoPlayer
     if (media3_buildFromSource) {

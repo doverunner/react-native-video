@@ -92,6 +92,9 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
         val source = Source.parse(src, context)
         if (source.uri == null) {
             videoView.clearSrc()
+        } else if (!TextUtils.isEmpty(source.headers["PallyConJson"])) {
+            videoView.setPallyConJson(source.headers["PallyConJson"]);
+            videoView.setUseTextureView(false);
         } else {
             videoView.setSrc(source)
         }

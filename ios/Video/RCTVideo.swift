@@ -557,7 +557,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         
         let videoSource = VideoSource(source)
         guard let pallyConJsonString = videoSource.requestHeaders?["PallyConJson"] as? String,
-              let data = Data(base64Encoded: pallyConJsonString) else {
+              let data = pallyConJsonString.data(using: .utf8) else {
             print("Error: Cannot decode Base64 string")
             return
         }
@@ -570,7 +570,6 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
 
             if let contentUrl = json["url"] as? String,
                let drmConfig = json["drmConfig"] as? [String: Any] {
-                
                 let siteId = drmConfig["siteId"] as? String ?? ""
                 let contentId = drmConfig["contentId"] as? String ?? ""
                 let drmLicenseUrl = drmConfig["drmLicenseUrl"] as? String ?? ""
@@ -626,8 +625,8 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
                 do {
                     guard let self else { throw NSError(domain: "", code: 0, userInfo: nil) }
 
-                    let playerItem = try await self.preparePlayerItem()
-                    try await self.setupPlayer(playerItem: playerItem)
+                    //let playerItem = try await self.preparePlayerItem()
+                    try await self.setupPlayer(playerItem: playerItem!)
                 } catch {
                     DebugLog("An error occurred: \(error.localizedDescription)")
 
@@ -1749,4 +1748,11 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     // Workaround for #3418 - https://github.com/TheWidlarzGroup/react-native-video/issues/3418#issuecomment-2043508862
     @objc
     func setOnClick(_: Any) {}
+}
+
+extension RCTVideo: PallyConFPSLicenseDelegate {
+    func license(result: PallyConResult) {
+        print("result : \(result.isSuccess)")
+        print("result : \(result.contentId)")
+    }
 }

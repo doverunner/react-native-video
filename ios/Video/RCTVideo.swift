@@ -1752,7 +1752,50 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
 
 extension RCTVideo: PallyConFPSLicenseDelegate {
     func license(result: PallyConResult) {
-        print("result : \(result.isSuccess)")
-        print("result : \(result.contentId)")
+        DebugLog("PallyCon Licenss Result")
+        DebugLog("PallyCon Licenss Result isSuccess : \(result.isSuccess)")
+        DebugLog("PallyCon Licenss Result contentId : \(result.contentId)")
+        
+        var errorMessage = ""
+        var code: Int = 0
+        if let error = result.error {
+            switch error {
+            case .database(comment: let comment):
+                errorMessage = comment
+            case .server(errorCode: let errorCode, comment: let comment):
+                code = errorCode
+                errorMessage = "code : \(errorCode), comment: \(comment)"
+            case .network(errorCode: let errorCode, comment: let comment):
+                code = errorCode
+                errorMessage = "code : \(errorCode), comment: \(comment)"
+            case .system(errorCode: let errorCode, comment: let comment):
+                code = errorCode
+                errorMessage = "code : \(errorCode), comment: \(comment)"
+            case .failed(errorCode: let errorCode, comment: let comment):
+                code = errorCode
+                errorMessage = "code : \(errorCode), comment: \(comment)"
+            case .unknown(errorCode: let errorCode, comment: let comment):
+                code = errorCode
+                errorMessage = "code : \(errorCode), comment: \(comment)"
+            case .invalid(comment: let comment):
+                errorMessage = "comment: \(comment)"
+            default:
+                errorMessage = "comment: \(error)"
+                break
+            }
+        }
+        
+        onVideoError?(
+            [
+                "error": [
+                    "code": NSNumber(value: code),
+                    "localizedDescription": "PallyConFPSSDK Error Message",
+                    "localizedFailureReason": errorMessage,
+                    "localizedRecoverySuggestion": errorMessage,
+                    "domain": "",
+                ],
+                "target": reactTag as Any,
+            ]
+        )
     }
 }

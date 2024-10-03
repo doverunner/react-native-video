@@ -558,13 +558,13 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         let videoSource = VideoSource(source)
         guard let pallyConJsonString = videoSource.requestHeaders?["PallyConJson"] as? String,
               let data = pallyConJsonString.data(using: .utf8) else {
-            print("Error: Cannot decode Base64 string")
+            DebugLog("Error: String to data conversion error.")
             return
         }
         var playerItem: AVPlayerItem?
         do {
             guard let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
-                print("Failed to parse JSON")
+                DebugLog("Failed to parse JSON")
                 return
             }
 
@@ -581,7 +581,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
                 }
                 
                 guard let url = URL(string: contentUrl) else {
-                    print("Invalid content URL")
+                    DebugLog("Invalid content URL")
                     return
                 }
                 
@@ -595,10 +595,10 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
                                                       licenseUrl: drmLicenseUrl)
                 _pallyconsdk?.prepare(Content: config)
             } else {
-                print("Missing or invalid 'url' or 'drmConfig' in JSON")
+                DebugLog("Missing or invalid 'url' or 'drmConfig' in JSON")
             }
         } catch {
-            print("Error parsing JSON: \(error.localizedDescription)")
+            DebugLog("Error parsing JSON: \(error.localizedDescription)")
         }
 
         let initializeSource = {
@@ -1783,19 +1783,19 @@ extension RCTVideo: PallyConFPSLicenseDelegate {
                 errorMessage = "comment: \(error)"
                 break
             }
+
+            onVideoError?(
+                [
+                    "error": [
+                        "code": NSNumber(value: code),
+                        "localizedDescription": "PallyConFPSSDK Error Message",
+                        "localizedFailureReason": errorMessage,
+                        "localizedRecoverySuggestion": errorMessage,
+                        "domain": "",
+                    ],
+                    "target": reactTag as Any,
+                ]
+            )
         }
-        
-        onVideoError?(
-            [
-                "error": [
-                    "code": NSNumber(value: code),
-                    "localizedDescription": "PallyConFPSSDK Error Message",
-                    "localizedFailureReason": errorMessage,
-                    "localizedRecoverySuggestion": errorMessage,
-                    "domain": "",
-                ],
-                "target": reactTag as Any,
-            ]
-        )
     }
 }

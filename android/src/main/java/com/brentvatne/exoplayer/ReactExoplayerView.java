@@ -877,7 +877,7 @@ public class ReactExoplayerView extends FrameLayout implements
                 videoSource = buildPallyConMediaSource(source.getCropStartMs(), source.getCropEndMs());
                 break;
             case EXPIRED:
-                throw new PallyConException.DrmException("expired");
+                throw new PallyConException.DrmException(null, "expired");
             case ERROR:
                 if (wvSDK == null) {
                     throw new Exception("wvSDK is null");

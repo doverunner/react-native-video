@@ -1758,40 +1758,41 @@ extension RCTVideo: PallyConFPSLicenseDelegate {
         
         var errorMessage = ""
         var code: Int = 0
-        if let error = result.error {
-            switch error {
-            case .database(comment: let comment):
-                errorMessage = comment
-            case .server(errorCode: let errorCode, comment: let comment):
-                code = errorCode
-                errorMessage = "code : \(errorCode), comment: \(comment)"
-            case .network(errorCode: let errorCode, comment: let comment):
-                code = errorCode
-                errorMessage = "code : \(errorCode), comment: \(comment)"
-            case .system(errorCode: let errorCode, comment: let comment):
-                code = errorCode
-                errorMessage = "code : \(errorCode), comment: \(comment)"
-            case .failed(errorCode: let errorCode, comment: let comment):
-                code = errorCode
-                errorMessage = "code : \(errorCode), comment: \(comment)"
-            case .unknown(errorCode: let errorCode, comment: let comment):
-                code = errorCode
-                errorMessage = "code : \(errorCode), comment: \(comment)"
-            case .invalid(comment: let comment):
-                errorMessage = "comment: \(comment)"
-            default:
-                errorMessage = "comment: \(error)"
-                break
+        if result.isSuccess == false {
+            if let error = result.error {
+                switch error {
+                    case .database(comment: let comment):
+                        errorMessage = comment
+                    case .server(errorCode: let errorCode, comment: let comment):
+                        code = errorCode
+                        errorMessage = "code : \(errorCode), comment: \(comment)"
+                    case .network(errorCode: let errorCode, comment: let comment):
+                        code = errorCode
+                        errorMessage = "code : \(errorCode), comment: \(comment)"
+                    case .system(errorCode: let errorCode, comment: let comment):
+                        code = errorCode
+                        errorMessage = "code : \(errorCode), comment: \(comment)"
+                    case .failed(errorCode: let errorCode, comment: let comment):
+                        code = errorCode
+                        errorMessage = "code : \(errorCode), comment: \(comment)"
+                    case .unknown(errorCode: let errorCode, comment: let comment):
+                        code = errorCode
+                        errorMessage = "code : \(errorCode), comment: \(comment)"
+                    case .invalid(comment: let comment):
+                        errorMessage = "comment: \(comment)"
+                    default:
+                        errorMessage = "comment: \(error)"
+                        break
+                }
             }
 
             onVideoError?(
                 [
                     "error": [
                         "code": NSNumber(value: code),
-                        "localizedDescription": "PallyConFPSSDK Error Message",
+                        "localizedDescription": errorMessage,
                         "localizedFailureReason": errorMessage,
-                        "localizedRecoverySuggestion": errorMessage,
-                        "domain": "",
+                        "domain": "PallyConError",
                     ],
                     "target": reactTag as Any,
                 ]

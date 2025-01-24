@@ -69,6 +69,7 @@ import androidx.media3.exoplayer.drm.DrmSessionManagerProvider;
 import androidx.media3.exoplayer.drm.FrameworkMediaDrm;
 import androidx.media3.exoplayer.drm.HttpMediaDrmCallback;
 import androidx.media3.exoplayer.drm.UnsupportedDrmException;
+import androidx.media3.exoplayer.hls.DefaultHlsDataSourceFactory;
 import androidx.media3.exoplayer.hls.HlsMediaSource;
 import androidx.media3.exoplayer.ima.ImaAdsLoader;
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
@@ -148,9 +149,11 @@ import java.util.concurrent.TimeUnit;
 
 import com.google.gson.Gson;
 import com.pallycon.widevine.exception.PallyConException;
+import com.pallycon.widevine.exception.PallyConLicenseServerException;
 import com.pallycon.widevine.model.ContentData;
 import com.pallycon.widevine.model.DownloadState;
 import com.pallycon.widevine.model.PallyConDrmInformation;
+import com.pallycon.widevine.model.PallyConEventListener;
 import com.pallycon.widevine.sdk.PallyConWvSDK;
 
 @SuppressLint("ViewConstructor")
@@ -223,9 +226,9 @@ public class ReactExoplayerView extends FrameLayout implements
     private ControlsConfig controlsConfig = new ControlsConfig();
 
     /*
-    * When user is seeking first called is on onPositionDiscontinuity -> DISCONTINUITY_REASON_SEEK
-    * Then we set if to false when playback is back in onIsPlayingChanged -> true
-    */
+     * When user is seeking first called is on onPositionDiscontinuity -> DISCONTINUITY_REASON_SEEK
+     * Then we set if to false when playback is back in onIsPlayingChanged -> true
+     */
     private boolean isSeeking = false;
     private long seekPosition = -1;
 
@@ -824,7 +827,7 @@ public class ReactExoplayerView extends FrameLayout implements
                             : (e.reason == UnsupportedDrmException.REASON_UNSUPPORTED_SCHEME
                             ? R.string.error_drm_unsupported_scheme : R.string.error_drm_unknown);
                     eventEmitter.onVideoError.invoke(getResources().getString(errorStringId), e, "3003");
-                        }
+                }
             }
         }
         return drmSessionManager;
@@ -929,18 +932,18 @@ public class ReactExoplayerView extends FrameLayout implements
                     .setLocalAdInsertionComponents(unusedAdTagUri -> adsLoader, exoPlayerView);
             DataSpec adTagDataSpec = new DataSpec(adTagUrl);
             return new AdsMediaSource(videoSource, adTagDataSpec, ImmutableList.of(source.getUri(), adTagUrl), mediaSourceFactory, adsLoader, exoPlayerView);
-            }
-        return videoSource;
         }
+        return videoSource;
+    }
 
     private MediaSource createFinalMediaSource(MediaSource videoSource, ArrayList<MediaSource> mediaSourceList) {
         if (mediaSourceList.isEmpty()) {
             return videoSource;
-            } else {
-                mediaSourceList.add(0, videoSource);
+        } else {
+            mediaSourceList.add(0, videoSource);
             return new MergingMediaSource(mediaSourceList.toArray(new MediaSource[0]));
-            }
         }
+    }
 
     private void setPlayerMediaSource(MediaSource mediaSource) {
         boolean haveResumePosition = resumeWindow != C.INDEX_UNSET;
@@ -1085,7 +1088,10 @@ public class ReactExoplayerView extends FrameLayout implements
             throw new IllegalStateException("Invalid wvSDK");
         }
 
-        DefaultMediaSourceFactory mediaSourceFactory = new DefaultMediaSourceFactory(wvSDK.getDataSourceFactory());
+        config.setDisableDisconnectError(this.disableDisconnectError);
+
+        DataSource.Factory dataSourceFactory = wvSDK.getDataSourceFactory();
+        DefaultMediaSourceFactory mediaSourceFactory = new DefaultMediaSourceFactory(dataSourceFactory);
 
         mediaSourceFactory.setLoadErrorHandlingPolicy(
                 config.buildLoadErrorHandlingPolicy(minLoadRetryCount));
@@ -1111,10 +1117,19 @@ public class ReactExoplayerView extends FrameLayout implements
         MediaItem.LiveConfiguration.Builder liveConfiguration = ConfigurationUtils.getLiveConfiguration(bufferConfig);
         mediaItemBuilder.setLiveConfiguration(liveConfiguration.build());
 
-        List<StreamKey> streamKeys = new ArrayList<>();
-        MediaItem mediaItem = mediaItemBuilder.setStreamKeys(streamKeys).build();
-
-        MediaSource mediaSource = mediaSourceFactory.createMediaSource(mediaItem);
+        MediaItem mediaItem = mediaItemBuilder.build();
+        MediaSource mediaSource;
+        DownloadState downloadState = wvSDK.getDownloadState();
+        byte[] keySetId = wvSDK.getKeySetId();
+        if ((downloadState.equals(DownloadState.COMPLETED) ||
+                downloadState.equals(DownloadState.DOWNLOADING)) && keySetId != null) {
+            mediaSource = mediaSourceFactory
+                    .createMediaSource(mediaItem);
+        } else {
+            mediaSource = mediaSourceFactory
+                    .setDrmSessionManagerProvider((_mediaItem) -> wvSDK.getDrmSessionManager())
+                    .createMediaSource(mediaItem);
+        }
 
         // Clipping 적용 (필요한 경우)
         if (cropStartMs >= 0 && cropEndMs >= 0) {
@@ -2011,7 +2026,6 @@ public class ReactExoplayerView extends FrameLayout implements
 //                    DebugLog.e(TAG, "PallyCon " + contentData.getUrl());
 //                }
 //            };
-            //wvSDK.setPallyConEventListener(listener);
 //            PallyConWvSDK.removePallyConEventListener(listener);
 //            PallyConWvSDK.addPallyConEventListener(listener);
 

@@ -22,6 +22,14 @@ buildscript {
     }
 
     repositories {
+        mavenLocal()
+        maven {
+            url = uri("https://maven.pkg.github.com/doverunner/widevine-android-sdk")
+            credentials {
+                username = ""
+                password = ""
+            }
+        }
         mavenCentral()
     }
 
@@ -198,8 +206,15 @@ def reactNativeArchitectures() {
 }
 
 repositories {
-    google()
     mavenLocal()
+    maven {
+        url = uri("https://maven.pkg.github.com/doverunner/widevine-android-sdk")
+        credentials {
+            username = ""
+            password = ""
+        }
+    }
+    google()
     maven {
         // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
         url "$rootDir/../node_modules/react-native/android"
@@ -220,8 +235,8 @@ dependencies {
     implementation "androidx.core:core-ktx:$androidxCore_version"
     implementation "androidx.activity:activity-ktx:$androidxActivity_version"
 
-    // pallycon widevine
-    implementation "com.pallycon:widevine:4.3.2"
+    // doverunner widevine
+    implementation "com.doverunner:widevine:4.4.0"
 
     // Gson
     implementation "com.google.code.gson:gson:2.11"

@@ -148,13 +148,11 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import com.google.gson.Gson;
-import com.pallycon.widevine.exception.PallyConException;
-import com.pallycon.widevine.exception.PallyConLicenseServerException;
-import com.pallycon.widevine.model.ContentData;
-import com.pallycon.widevine.model.DownloadState;
-import com.pallycon.widevine.model.PallyConDrmInformation;
-import com.pallycon.widevine.model.PallyConEventListener;
-import com.pallycon.widevine.sdk.PallyConWvSDK;
+import com.doverunner.widevine.exception.WvException;
+import com.doverunner.widevine.model.ContentData;
+import com.doverunner.widevine.model.DownloadState;
+import com.doverunner.widevine.model.DrmInformation;
+import com.doverunner.widevine.sdk.DrWvSDK;
 
 @SuppressLint("ViewConstructor")
 public class ReactExoplayerView extends FrameLayout implements
@@ -234,7 +232,7 @@ public class ReactExoplayerView extends FrameLayout implements
 
     // Props from React
     private Source source = new Source();
-    private PallyConWvSDK wvSDK = null;
+    private DrWvSDK wvSDK = null;
     private boolean repeat;
     private String audioTrackType;
     private String audioTrackValue;
@@ -704,7 +702,7 @@ public class ReactExoplayerView extends FrameLayout implements
                             try {
                                 // Source initialization must run on the main thread
                                 initializePlayerSource();
-                            } catch (PallyConException.DrmException e) {
+                            } catch (WvException.DrmException e) {
                                 self.playerNeedsSource = true;
                                 DebugLog.e(TAG, "Failed to initialize Player! 1");
                                 DebugLog.e(TAG, e.toString());
@@ -722,7 +720,7 @@ public class ReactExoplayerView extends FrameLayout implements
                 } else if (source.getUri() != null) {
                     initializePlayerSource();
                 }
-            } catch (PallyConException.DrmException e) {
+            } catch (WvException.DrmException e) {
                 self.playerNeedsSource = true;
                 DebugLog.e(TAG, "Failed to initialize Player! 1");
                 DebugLog.e(TAG, e.toString());
@@ -845,7 +843,7 @@ public class ReactExoplayerView extends FrameLayout implements
         }
 
         try {
-            PallyConDrmInformation drmInfo = wvSDK.getDrmInformation();
+            DrmInformation drmInfo = wvSDK.getDrmInformation();
             if (drmInfo == null) {
                 return LicenseStatus.ERROR;
             }
@@ -877,10 +875,10 @@ public class ReactExoplayerView extends FrameLayout implements
 
         switch (licenseStatus) {
             case VALID:
-                videoSource = buildPallyConMediaSource(source.getCropStartMs(), source.getCropEndMs());
+                videoSource = buildWvMediaSource(source.getCropStartMs(), source.getCropEndMs());
                 break;
             case EXPIRED:
-                throw new PallyConException.DrmException(null, "expired");
+                throw new WvException.DrmException(null, "expired");
             case ERROR:
                 if (wvSDK == null) {
                     throw new Exception("wvSDK is null");
@@ -904,7 +902,7 @@ public class ReactExoplayerView extends FrameLayout implements
         if (wvSDK != null) {
             wvSDK.downloadLicense(null,
                     () -> {
-                        MediaSource videoSource = buildPallyConMediaSource(cropStartMs, cropEndMs);
+                        MediaSource videoSource = buildWvMediaSource(cropStartMs, cropEndMs);
                         MediaSource mediaSourceWithAds = handleAdsIfNeeded(videoSource);
                         MediaSource finalMediaSource = createFinalMediaSource(mediaSourceWithAds, buildTextSources());
 
@@ -1083,7 +1081,7 @@ public class ReactExoplayerView extends FrameLayout implements
         }
     }
 
-    private MediaSource buildPallyConMediaSource(long cropStartMs, long cropEndMs) {
+    private MediaSource buildWvMediaSource(long cropStartMs, long cropEndMs) {
         if (wvSDK == null) {
             throw new IllegalStateException("Invalid wvSDK");
         }
@@ -1974,60 +1972,14 @@ public class ReactExoplayerView extends FrameLayout implements
             boolean isSourceEqual = uri.equals(source.getUri());
 //            this.srcUri = uri;
             source.updateUri(uri);
-            wvSDK = PallyConWvSDK.createPallyConWvSDK(
+            wvSDK = DrWvSDK.createWvSDK(
                     this.themedReactContext,
                     contentData
             );
 
             if (cmcdConfigurationFactory != null) {
-                PallyConWvSDK.setCmcdConfigurationFactory(cmcdConfigurationFactory::createCmcdConfiguration);
+                DrWvSDK.setCmcdConfigurationFactory(cmcdConfigurationFactory::createCmcdConfiguration);
             }
-
-//            PallyConEventListener listener = new PallyConEventListener() {
-//                @Override
-//                public void onFailed(@NonNull ContentData contentData, PallyConLicenseServerException e) {
-//                    DebugLog.e(TAG, "PallyCon " + e.getMessage());
-////                    eventEmitter.onVideoError.invoke("PallyConLicenseServerException onFailed", e, "50000");
-//                }
-//
-//                @Override
-//                public void onFailed(@NonNull ContentData contentData, PallyConException e) {
-//                    DebugLog.e(TAG, "PallyCon " + e.getMessage());
-////                    eventEmitter.onVideoError.invoke("PallyConException onFailed", e, "50001");
-//                }
-//
-//                @Override
-//                public void onPaused(@NonNull ContentData contentData) {
-//                    DebugLog.e(TAG, "PallyCon " + contentData.getUrl());
-//                }
-//
-//                @Override
-//                public void onRemoved(@NonNull ContentData contentData) {
-//                    DebugLog.e(TAG, "PallyCon " + contentData.getUrl());
-//                }
-//
-//                @Override
-//                public void onRestarting(@NonNull ContentData contentData) {
-//                    DebugLog.e(TAG, "PallyCon " + contentData.getUrl());
-//                }
-//
-//                @Override
-//                public void onStopped(@NonNull ContentData contentData) {
-//                    DebugLog.e(TAG, "PallyCon " + contentData.getUrl());
-//                }
-//
-//                @Override
-//                public void onProgress(@NonNull ContentData contentData, float percent, long downloadedBytes) {
-//                    DebugLog.e(TAG, "PallyCon " + contentData.getUrl());
-//                }
-//
-//                @Override
-//                public void onCompleted(@NonNull ContentData contentData) {
-//                    DebugLog.e(TAG, "PallyCon " + contentData.getUrl());
-//                }
-//            };
-//            PallyConWvSDK.removePallyConEventListener(listener);
-//            PallyConWvSDK.addPallyConEventListener(listener);
 
             if (!isSourceEqual) {
                 reloadSource();

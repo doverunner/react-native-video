@@ -5,7 +5,7 @@ import Foundation
     import GoogleInteractiveMediaAds
 #endif
 import React
-import PallyConFPSSDK
+import DOVERUNNERFairPlay
 
 // MARK: - RCTVideo
 
@@ -31,7 +31,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     /* For sending videoProgress events */
     private var _controls = false
     
-    var _pallyconsdk: PallyConFPSSDK?
+    var _multiDrmSdk: DOVERUNNERFairPlay?
 
     /* Keep track of any modifiers, need to be applied after each play */
     private var _audioOutput: String = "speaker"
@@ -256,7 +256,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         )
         _playerObserver._handlers = self
         
-        _pallyconsdk = PallyConFPSSDK()
+        _multiDrmSdk = DOVERUNNERFairPlay()
         
         #if USE_VIDEO_CACHING
             _videoCache.playerItemPrepareText = playerItemPrepareText
@@ -556,8 +556,8 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         self.isSetSourceOngoing = true
         
         let videoSource = VideoSource(source)
-        guard let pallyConJsonString = videoSource.requestHeaders?["PallyConJson"] as? String,
-              let data = pallyConJsonString.data(using: .utf8) else {
+        guard let multiDrmJsonString = videoSource.requestHeaders?["MultiDrmJson"] as? String,
+              let data = multiDrmJsonString.data(using: .utf8) else {
             DebugLog("Error: String to data conversion error.")
             return
         }
@@ -577,7 +577,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
                 let customData = drmConfig["customData"] as? String ?? ""
                 var certificateUrl = drmConfig["certificateUrl"] as? String ?? ""
                 if certificateUrl == "" || certificateUrl.isEmpty || certificateUrl == String() {
-                    certificateUrl = "https://license-global.pallycon.com/ri/fpsKeyManager.do?siteId=" + siteId
+                    certificateUrl = "https://drm-license.doverunner.com/ri/fpsKeyManager.do?siteId=" + siteId
                 }
                 
                 guard let url = URL(string: contentUrl) else {
@@ -587,13 +587,13 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
                 
                 let urlAsset = AVURLAsset(url: url)
                 playerItem = AVPlayerItem(asset: urlAsset)
-                let config = PallyConDrmConfiguration(avURLAsset: urlAsset,
-                                                      contentId: contentId,
-                                                      certificateUrl: certificateUrl,
-                                                      authData: token,
-                                                      delegate: self,
-                                                      licenseUrl: drmLicenseUrl)
-                _pallyconsdk?.prepare(Content: config)
+                let config = FairPlayConfiguration(avURLAsset: urlAsset,
+                                                   contentId: contentId,
+                                                   certificateUrl: certificateUrl,
+                                                   authData: token,
+                                                   delegate: self,
+                                                   licenseUrl: drmLicenseUrl)
+                _multiDrmSdk?.prepare(drm: config)
             } else {
                 DebugLog("Missing or invalid 'url' or 'drmConfig' in JSON")
             }
@@ -1750,11 +1750,11 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     func setOnClick(_: Any) {}
 }
 
-extension RCTVideo: PallyConFPSLicenseDelegate {
-    func license(result: PallyConResult) {
-        DebugLog("PallyCon Licenss Result")
-        DebugLog("PallyCon Licenss Result isSuccess : \(result.isSuccess)")
-        DebugLog("PallyCon Licenss Result contentId : \(result.contentId)")
+extension RCTVideo: FairPlayLicenseDelegate {
+    func license(result: LicenseResult) {
+        DebugLog("Licenss Result")
+        DebugLog("Licenss Result isSuccess : \(result.isSuccess)")
+        DebugLog("Licenss Result contentId : \(result.contentId)")
         
         var errorMessage = ""
         var code: Int = 0
@@ -1792,7 +1792,7 @@ extension RCTVideo: PallyConFPSLicenseDelegate {
                         "code": NSNumber(value: code),
                         "localizedDescription": errorMessage,
                         "localizedFailureReason": errorMessage,
-                        "domain": "PallyConError",
+                        "domain": "MultiDrmSdkError",
                     ],
                     "target": reactTag as Any,
                 ]

@@ -1966,7 +1966,7 @@ public class ReactExoplayerView extends FrameLayout implements
         }
     }
 
-    public void setPallyConJson(final String json) {
+    public void setMultiDrmJson(final String json) {
         if (json != null) {
             Gson gson = new Gson();
             ContentData contentData = gson.fromJson(json, ContentData.class);

@@ -19,10 +19,7 @@ import com.facebook.react.bridge.ReadableMap
 import java.util.Locale
 import java.util.Objects
 
-/**
- * Class representing Source props for host.
- * Only generic code here, no reference to the player.
- */
+/** Class representing Source props for host. Only generic code here, no reference to the player. */
 class Source {
     /** String value of source to playback */
     private var uriString: String? = null
@@ -48,7 +45,10 @@ class Source {
     /** Will virtually consider that content before contentStartTime is a preroll ad */
     var contentStartTime: Int = -1
 
-    /** Allow to force stream content, necessary when uri doesn't contain content type (.mlp4, .m3u, ...) */
+    /**
+     * Allow to force stream content, necessary when uri doesn't contain content type (.mlp4, .m3u,
+     * ...)
+     */
     var extension: String? = null
 
     /** Metadata to display in notification */
@@ -60,24 +60,16 @@ class Source {
     /** http header list */
     val headers: MutableMap<String, String> = HashMap()
 
-    /**
-     * DRM properties linked to the source
-     */
+    /** DRM properties linked to the source */
     var drmProps: DRMProps? = null
 
-    /** enable chunkless preparation for HLS
-     * see:
-     */
+    /** enable chunkless preparation for HLS see: */
     var textTracksAllowChunklessPreparation: Boolean = false
 
-    /**
-     * CMCD properties linked to the source
-     */
+    /** CMCD properties linked to the source */
     var cmcdProps: CMCDProps? = null
 
-    /**
-     * Ads playback properties
-     */
+    /** Ads playback properties */
     var adsProps: AdsProps? = null
 
     /*
@@ -85,18 +77,25 @@ class Source {
      */
     var bufferConfig = BufferConfig()
 
-    /**
-     * The list of sideLoaded text tracks
-     */
+    /** The list of sideLoaded text tracks */
     var sideLoadedTextTracks: SideLoadedTextTrackList? = null
 
-    override fun hashCode(): Int = Objects.hash(uriString, uri, startPositionMs, cropStartMs, cropEndMs, extension, metadata, headers)
+    override fun hashCode(): Int =
+            Objects.hash(
+                    uriString,
+                    uri,
+                    startPositionMs,
+                    cropStartMs,
+                    cropEndMs,
+                    extension,
+                    metadata,
+                    headers
+            )
 
-    /** return true if this and src are equals  */
+    /** return true if this and src are equals */
     override fun equals(other: Any?): Boolean {
         if (other == null || other !is Source) return false
-        return (
-            uri == other.uri &&
+        return (uri == other.uri &&
                 cropStartMs == other.cropStartMs &&
                 cropEndMs == other.cropEndMs &&
                 startPositionMs == other.startPositionMs &&
@@ -109,11 +108,20 @@ class Source {
                 minLoadRetryCount == other.minLoadRetryCount &&
                 isLocalAssetFile == other.isLocalAssetFile &&
                 isAsset == other.isAsset &&
-                bufferConfig == other.bufferConfig
-            )
+                bufferConfig == other.bufferConfig)
     }
 
-    /** return true if this and src are equals  */
+    fun updateUri(newUri: Uri?) {
+        if (newUri != null) {
+            this.uri = newUri
+            this.uriString = newUri.toString()
+        } else {
+            this.uri = null
+            this.uriString = null
+        }
+    }
+
+    /** return true if this and src are equals */
     fun isEquals(source: Source): Boolean = this == source
 
     /** Metadata to display in notification */
@@ -177,7 +185,8 @@ class Source {
         private const val PROP_SRC_DRM = "drm"
         private const val PROP_SRC_CMCD = "cmcd"
         private const val PROP_SRC_ADS = "ad"
-        private const val PROP_SRC_TEXT_TRACKS_ALLOW_CHUNKLESS_PREPARATION = "textTracksAllowChunklessPreparation"
+        private const val PROP_SRC_TEXT_TRACKS_ALLOW_CHUNKLESS_PREPARATION =
+                "textTracksAllowChunklessPreparation"
         private const val PROP_SRC_TEXT_TRACKS = "textTracks"
         private const val PROP_SRC_MIN_LOAD_RETRY_COUNT = "minLoadRetryCount"
         private const val PROP_SRC_BUFFER_CONFIG = "bufferConfig"
@@ -186,17 +195,9 @@ class Source {
         private fun getUriFromAssetId(context: Context, uriString: String): Uri? {
             val resources: Resources = context.resources
             val packageName: String = context.packageName
-            var identifier = resources.getIdentifier(
-                uriString,
-                "drawable",
-                packageName
-            )
+            var identifier = resources.getIdentifier(uriString, "drawable", packageName)
             if (identifier == 0) {
-                identifier = resources.getIdentifier(
-                    uriString,
-                    "raw",
-                    packageName
-                )
+                identifier = resources.getIdentifier(uriString, "raw", packageName)
             }
 
             if (identifier <= 0) {
@@ -204,7 +205,10 @@ class Source {
                 DebugLog.d(TAG, "cannot find identifier")
                 return null
             }
-            return Uri.Builder().scheme(ContentResolver.SCHEME_ANDROID_RESOURCE).path(identifier.toString()).build()
+            return Uri.Builder()
+                    .scheme(ContentResolver.SCHEME_ANDROID_RESOURCE)
+                    .path(identifier.toString())
+                    .build()
         }
 
         /** parse the source ReadableMap received from app */
@@ -245,8 +249,10 @@ class Source {
                 if (BuildConfig.USE_EXOPLAYER_IMA) {
                     source.adsProps = AdsProps.parse(safeGetMap(src, PROP_SRC_ADS))
                 }
-                source.textTracksAllowChunklessPreparation = safeGetBool(src, PROP_SRC_TEXT_TRACKS_ALLOW_CHUNKLESS_PREPARATION, true)
-                source.sideLoadedTextTracks = SideLoadedTextTrackList.parse(safeGetArray(src, PROP_SRC_TEXT_TRACKS))
+                source.textTracksAllowChunklessPreparation =
+                        safeGetBool(src, PROP_SRC_TEXT_TRACKS_ALLOW_CHUNKLESS_PREPARATION, true)
+                source.sideLoadedTextTracks =
+                        SideLoadedTextTrackList.parse(safeGetArray(src, PROP_SRC_TEXT_TRACKS))
                 source.minLoadRetryCount = safeGetInt(src, PROP_SRC_MIN_LOAD_RETRY_COUNT, 3)
                 source.bufferConfig = BufferConfig.parse(safeGetMap(src, PROP_SRC_BUFFER_CONFIG))
 
@@ -274,14 +280,12 @@ class Source {
                 return false
             }
             val lowerCaseUri = scheme.lowercase(Locale.getDefault())
-            return (
-                lowerCaseUri == "http" ||
+            return (lowerCaseUri == "http" ||
                     lowerCaseUri == "https" ||
                     lowerCaseUri == "content" ||
                     lowerCaseUri == "file" ||
                     lowerCaseUri == "rtsp" ||
-                    lowerCaseUri == "asset"
-                )
+                    lowerCaseUri == "asset")
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.brentvatne.exoplayer
 
 import android.graphics.Color
+import android.text.TextUtils
 import android.util.Log
 import com.brentvatne.common.api.BufferingStrategy
 import com.brentvatne.common.api.ControlsConfig
@@ -17,7 +18,8 @@ import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.ViewGroupManager
 import com.facebook.react.uimanager.annotations.ReactProp
 
-class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : ViewGroupManager<ReactExoplayerView>() {
+class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) :
+        ViewGroupManager<ReactExoplayerView>() {
 
     companion object {
         private const val TAG = "ExoViewManager"
@@ -37,7 +39,7 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
         private const val PROP_AUDIO_OUTPUT = "audioOutput"
         private const val PROP_VOLUME = "volume"
         private const val PROP_PREVENTS_DISPLAY_SLEEP_DURING_VIDEO_PLAYBACK =
-            "preventsDisplaySleepDuringVideoPlayback"
+                "preventsDisplaySleepDuringVideoPlayback"
         private const val PROP_PROGRESS_UPDATE_INTERVAL = "progressUpdateInterval"
         private const val PROP_REPORT_BANDWIDTH = "reportBandwidth"
         private const val PROP_RATE = "rate"
@@ -88,8 +90,8 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
         if (source.uri == null) {
             videoView.clearSrc()
         } else if (!TextUtils.isEmpty(source.headers["MultiDrmJson"])) {
-            videoView.setMultiDrmJson(source.headers["MultiDrmJson"]);
-            videoView.setUseTextureView(false);
+            videoView.setMultiDrmJson(source.headers["MultiDrmJson"])
+            videoView.setUseTextureView(false)
         } else {
             videoView.setSrc(source)
         }
@@ -99,11 +101,8 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
     fun setResizeMode(videoView: ReactExoplayerView, resizeMode: String) {
         when (resizeMode) {
             "none", "contain" -> videoView.setResizeModeModifier(ResizeMode.RESIZE_MODE_FIT)
-
             "cover" -> videoView.setResizeModeModifier(ResizeMode.RESIZE_MODE_CENTER_CROP)
-
             "stretch" -> videoView.setResizeModeModifier(ResizeMode.RESIZE_MODE_FILL)
-
             else -> {
                 DebugLog.w(TAG, "Unsupported resize mode: $resizeMode - falling back to fit")
                 videoView.setResizeModeModifier(ResizeMode.RESIZE_MODE_FIT)
@@ -117,7 +116,10 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
     }
 
     @ReactProp(name = PROP_PREVENTS_DISPLAY_SLEEP_DURING_VIDEO_PLAYBACK, defaultBoolean = false)
-    fun setPreventsDisplaySleepDuringVideoPlayback(videoView: ReactExoplayerView, preventsSleep: Boolean) {
+    fun setPreventsDisplaySleepDuringVideoPlayback(
+            videoView: ReactExoplayerView,
+            preventsSleep: Boolean
+    ) {
         videoView.preventsDisplaySleepDuringVideoPlayback = preventsSleep
     }
 
@@ -126,8 +128,16 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
         var typeString: String? = null
         var value: String? = null
         if (selectedVideoTrack != null) {
-            typeString = ReactBridgeUtils.safeGetString(selectedVideoTrack, PROP_SELECTED_VIDEO_TRACK_TYPE)
-            value = ReactBridgeUtils.safeGetString(selectedVideoTrack, PROP_SELECTED_VIDEO_TRACK_VALUE)
+            typeString =
+                    ReactBridgeUtils.safeGetString(
+                            selectedVideoTrack,
+                            PROP_SELECTED_VIDEO_TRACK_TYPE
+                    )
+            value =
+                    ReactBridgeUtils.safeGetString(
+                            selectedVideoTrack,
+                            PROP_SELECTED_VIDEO_TRACK_VALUE
+                    )
         }
         videoView.setSelectedVideoTrack(typeString, value)
     }
@@ -137,8 +147,16 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
         var typeString: String? = null
         var value: String? = null
         if (selectedAudioTrack != null) {
-            typeString = ReactBridgeUtils.safeGetString(selectedAudioTrack, PROP_SELECTED_AUDIO_TRACK_TYPE)
-            value = ReactBridgeUtils.safeGetString(selectedAudioTrack, PROP_SELECTED_AUDIO_TRACK_VALUE)
+            typeString =
+                    ReactBridgeUtils.safeGetString(
+                            selectedAudioTrack,
+                            PROP_SELECTED_AUDIO_TRACK_TYPE
+                    )
+            value =
+                    ReactBridgeUtils.safeGetString(
+                            selectedAudioTrack,
+                            PROP_SELECTED_AUDIO_TRACK_VALUE
+                    )
         }
         videoView.setSelectedAudioTrack(typeString, value)
     }
@@ -148,8 +166,13 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
         var typeString: String? = null
         var value: String? = null
         if (selectedTextTrack != null) {
-            typeString = ReactBridgeUtils.safeGetString(selectedTextTrack, PROP_SELECTED_TEXT_TRACK_TYPE)
-            value = ReactBridgeUtils.safeGetString(selectedTextTrack, PROP_SELECTED_TEXT_TRACK_VALUE)
+            typeString =
+                    ReactBridgeUtils.safeGetString(selectedTextTrack, PROP_SELECTED_TEXT_TRACK_TYPE)
+            value =
+                    ReactBridgeUtils.safeGetString(
+                            selectedTextTrack,
+                            PROP_SELECTED_TEXT_TRACK_VALUE
+                    )
         }
         videoView.setSelectedTextTrack(typeString, value)
     }
@@ -165,7 +188,10 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
     }
 
     @ReactProp(name = PROP_ENTER_PICTURE_IN_PICTURE_ON_LEAVE, defaultBoolean = false)
-    fun setEnterPictureInPictureOnLeave(videoView: ReactExoplayerView, enterPictureInPictureOnLeave: Boolean) {
+    fun setEnterPictureInPictureOnLeave(
+            videoView: ReactExoplayerView,
+            enterPictureInPictureOnLeave: Boolean
+    ) {
         videoView.setEnterPictureInPictureOnLeave(enterPictureInPictureOnLeave)
     }
 
@@ -256,7 +282,10 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
     }
 
     @ReactProp(name = PROP_SHOW_NOTIFICATION_CONTROLS)
-    fun setShowNotificationControls(videoView: ReactExoplayerView, showNotificationControls: Boolean) {
+    fun setShowNotificationControls(
+            videoView: ReactExoplayerView,
+            showNotificationControls: Boolean
+    ) {
         videoView.setShowNotificationControls(showNotificationControls)
     }
 

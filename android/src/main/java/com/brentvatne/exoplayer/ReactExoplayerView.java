@@ -1042,15 +1042,15 @@ public class ReactExoplayerView extends FrameLayout implements
                 throw new WvException.DrmException(null, "expired");
             case ERROR:
                 if (wvSDK == null) {
-                    throw new Exception("wvSDK is null");
+                    throw new IllegalStateException("wvSDK is null");
                 } else {
-                    downloadLicenseAndBuildMediaSource(source.getCropStartMs(), source.getCropEndMs());
+                    downloadLicenseAndBuildMediaSource(runningSource, source.getCropStartMs(), source.getCropEndMs());
                 }
                 return;
         }        
     }
 
-    private void downloadLicenseAndBuildMediaSource(long cropStartMs, long cropEndMs) {
+    private void downloadLicenseAndBuildMediaSource(Source runningSource, long cropStartMs, long cropEndMs) {
         if (wvSDK != null) {
             wvSDK.downloadLicense(null,
                     () -> {
@@ -1064,6 +1064,7 @@ public class ReactExoplayerView extends FrameLayout implements
                             mediaSource = new MergingMediaSource(mediaSourceArray);
                         }
 
+                        final MediaSource finalMediaSource = mediaSource;
                         new Handler(Looper.getMainLooper()).post(() -> {
                             setPlayerMediaSource(finalMediaSource);
                         });
@@ -1225,7 +1226,7 @@ public class ReactExoplayerView extends FrameLayout implements
         DefaultMediaSourceFactory mediaSourceFactory = new DefaultMediaSourceFactory(dataSourceFactory);
 
         mediaSourceFactory.setLoadErrorHandlingPolicy(
-                config.buildLoadErrorHandlingPolicy(minLoadRetryCount));
+                config.buildLoadErrorHandlingPolicy(source.getMinLoadRetryCount()));
 
         MediaSource originalMediaSource = wvSDK.getMediaSource();
         MediaItem originalMediaItem = originalMediaSource.getMediaItem();
@@ -1238,14 +1239,17 @@ public class ReactExoplayerView extends FrameLayout implements
         }
 
         // AdsConfiguration 설정
-        if (adTagUrl != null) {
-            mediaItemBuilder.setAdsConfiguration(
-                    new MediaItem.AdsConfiguration.Builder(adTagUrl).build()
-            );
+        if (source.getAdsProps() != null) {
+            Uri adTagUrl = source.getAdsProps().getAdTagUrl();
+            if (adTagUrl != null) {
+                mediaItemBuilder.setAdsConfiguration(
+                        new MediaItem.AdsConfiguration.Builder(adTagUrl).build()
+                );
+            }
         }
 
         // LiveConfiguration 설정
-        MediaItem.LiveConfiguration.Builder liveConfiguration = ConfigurationUtils.getLiveConfiguration(bufferConfig);
+        MediaItem.LiveConfiguration.Builder liveConfiguration = ConfigurationUtils.getLiveConfiguration(source.getBufferConfig());
         mediaItemBuilder.setLiveConfiguration(liveConfiguration.build());
 
         MediaItem mediaItem = mediaItemBuilder.build();
@@ -2137,7 +2141,8 @@ public class ReactExoplayerView extends FrameLayout implements
             }
 
             if (!isSourceEqual) {
-                reloadSource();
+                playerNeedsSource = true;
+                initializePlayer();
             }
         }
     }

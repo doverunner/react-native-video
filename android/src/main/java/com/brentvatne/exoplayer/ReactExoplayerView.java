@@ -152,6 +152,13 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import com.google.gson.Gson;
+import com.doverunner.widevine.exception.WvException;
+import com.doverunner.widevine.model.ContentData;
+import com.doverunner.widevine.model.DownloadState;
+import com.doverunner.widevine.model.DrmInformation;
+import com.doverunner.widevine.sdk.DrWvSDK;
+
 @SuppressLint("ViewConstructor")
 public class ReactExoplayerView extends FrameLayout implements
         LifecycleEventListener,
@@ -233,6 +240,7 @@ public class ReactExoplayerView extends FrameLayout implements
 
     // Props from React
     private Source source = new Source();
+    private DrWvSDK wvSDK = null;
     private boolean repeat;
     private String audioTrackType;
     private String audioTrackValue;
@@ -806,6 +814,12 @@ public class ReactExoplayerView extends FrameLayout implements
                             try {
                                 // Source initialization must run on the main thread
                                 initializePlayerSource(runningSource);
+                            } catch (WvException.DrmException e) {
+                                self.playerNeedsSource = true;
+                                DebugLog.e(TAG, "Failed to initialize Player! 1");
+                                DebugLog.e(TAG, e.toString());
+                                e.printStackTrace();
+                                eventEmitter.onVideoError.invoke(e.toString(), e, "50000");
                             } catch (Exception ex) {
                                 self.playerNeedsSource = true;
                                 DebugLog.e(TAG, "Failed to initialize Player! 1");
@@ -818,6 +832,12 @@ public class ReactExoplayerView extends FrameLayout implements
                 } else if (runningSource == source) {
                     initializePlayerSource(runningSource);
                 }
+            } catch (WvException.DrmException e) {
+                self.playerNeedsSource = true;
+                DebugLog.e(TAG, "Failed to initialize Player! 1");
+                DebugLog.e(TAG, e.toString());
+                e.printStackTrace();
+                eventEmitter.onVideoError.invoke(e.toString(), e, "50000");
             } catch (Exception ex) {
                 self.playerNeedsSource = true;
                 DebugLog.e(TAG, "Failed to initialize Player! 2");
@@ -930,6 +950,35 @@ public class ReactExoplayerView extends FrameLayout implements
         exoPlayerView.hideAds();
         return null;
     }
+    
+    enum LicenseStatus {
+        VALID,
+        EXPIRED,
+        ERROR
+    }
+    
+     private LicenseStatus checkLicenseStatus() {
+        if (wvSDK == null) {
+            return LicenseStatus.ERROR;
+        }
+
+        try {
+            DrmInformation drmInfo = wvSDK.getDrmInformation();
+            if (drmInfo == null) {
+                return LicenseStatus.ERROR;
+            }
+
+            if ((drmInfo.getLicenseDuration() <= 0 || drmInfo.getPlaybackDuration() <= 0) &&
+                    wvSDK.getDownloadState() == DownloadState.COMPLETED) {
+                return LicenseStatus.EXPIRED;
+            }
+
+            return LicenseStatus.VALID;
+        } catch (Exception e) {
+            DebugLog.e(TAG, "drm error: " + e.getMessage());
+            return LicenseStatus.ERROR;
+        }
+    }
 
     private DrmSessionManager buildDrmSessionManager(UUID uuid, DRMProps drmProps) throws UnsupportedDrmException {
         if (Util.SDK_INT < 18) {
@@ -963,29 +1012,77 @@ public class ReactExoplayerView extends FrameLayout implements
         if (runningSource.getUri() == null) {
             return;
         }
+        
+        MediaSource videoSource = null;
+        LicenseStatus licenseStatus = checkLicenseStatus();
+        
         /// init DRM
-        DrmSessionManager drmSessionManager = initializePlayerDrm();
-        if (drmSessionManager == null && runningSource.getDrmProps() != null && runningSource.getDrmProps().getDrmType() != null) {
-            // Failed to initialize DRM session manager - cannot continue
-            DebugLog.e(TAG, "Failed to initialize DRM Session Manager Framework!");
-            return;
-        }
-        // init source to manage ads and external text tracks
-        MediaSource videoSource = buildMediaSource(runningSource.getUri(),
-                runningSource.getExtension(),
-                drmSessionManager,
-                runningSource.getCropStartMs(),
-                runningSource.getCropEndMs());
-        MediaSource mediaSourceWithAds = initializeAds(videoSource, runningSource);
-        MediaSource mediaSource = Objects.requireNonNullElse(mediaSourceWithAds, videoSource);
+        // DrmSessionManager drmSessionManager = initializePlayerDrm();
+        // if (drmSessionManager == null && runningSource.getDrmProps() != null && runningSource.getDrmProps().getDrmType() != null) {
+        //     // Failed to initialize DRM session manager - cannot continue
+        //     DebugLog.e(TAG, "Failed to initialize DRM Session Manager Framework!");
+        //     return;
+        // }
 
-        MediaSource subtitlesSource = buildTextSource();
-        if (subtitlesSource != null) {
-            MediaSource[] mediaSourceArray = {mediaSource, subtitlesSource};
-            mediaSource = new MergingMediaSource(mediaSourceArray);
-        }
+        switch (licenseStatus) {
+            case VALID:
+                videoSource = buildWvMediaSource(source.getCropStartMs(), source.getCropEndMs());
+                MediaSource mediaSourceWithAds = initializeAds(videoSource, runningSource);
+                MediaSource mediaSource = Objects.requireNonNullElse(mediaSourceWithAds, videoSource);
 
-        // wait for player to be set
+                MediaSource subtitlesSource = buildTextSource();
+                if (subtitlesSource != null) {
+                    MediaSource[] mediaSourceArray = {mediaSource, subtitlesSource};
+                    mediaSource = new MergingMediaSource(mediaSourceArray);
+                }
+
+                setPlayerMediaSource(mediaSource);
+                break;
+            case EXPIRED:
+                throw new WvException.DrmException(null, "expired");
+            case ERROR:
+                if (wvSDK == null) {
+                    throw new Exception("wvSDK is null");
+                } else {
+                    downloadLicenseAndBuildMediaSource(source.getCropStartMs(), source.getCropEndMs());
+                }
+                return;
+        }        
+    }
+
+    private void downloadLicenseAndBuildMediaSource(long cropStartMs, long cropEndMs) {
+        if (wvSDK != null) {
+            wvSDK.downloadLicense(null,
+                    () -> {
+                        MediaSource videoSource = buildWvMediaSource(cropStartMs, cropEndMs);
+                        MediaSource mediaSourceWithAds = initializeAds(videoSource, runningSource);
+                        MediaSource mediaSource = Objects.requireNonNullElse(mediaSourceWithAds, videoSource);
+
+                        MediaSource subtitlesSource = buildTextSource();
+                        if (subtitlesSource != null) {
+                            MediaSource[] mediaSourceArray = {mediaSource, subtitlesSource};
+                            mediaSource = new MergingMediaSource(mediaSourceArray);
+                        }
+
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            setPlayerMediaSource(finalMediaSource);
+                        });
+                        return null;
+                    }, (exception) -> {
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            DebugLog.e(TAG, "failed download license: " + exception.getMessage());
+                            eventEmitter.onVideoError.invoke("failed download license", exception, "50000");
+                        });
+                        return null;
+                    }
+            );
+        } else {
+            DebugLog.e(TAG,"wvSDK is null");
+            eventEmitter.onVideoError.invoke("wvSDK is null", null, "5001");
+        }
+    }
+
+    private void setPlayerMediaSource(MediaSource mediaSource) {
         while (player == null) {
             try {
                 wait();
@@ -999,8 +1096,8 @@ public class ReactExoplayerView extends FrameLayout implements
         if (haveResumePosition) {
             player.seekTo(resumeWindow, resumePosition);
             player.setMediaSource(mediaSource, false);
-        } else if (runningSource.getStartPositionMs() > 0) {
-            player.setMediaSource(mediaSource, runningSource.getStartPositionMs());
+        } else if (source.getStartPositionMs() > 0) {
+            player.setMediaSource(mediaSource, source.getStartPositionMs());
         } else {
             player.setMediaSource(mediaSource, true);
         }
@@ -1008,10 +1105,8 @@ public class ReactExoplayerView extends FrameLayout implements
         playerNeedsSource = false;
 
         reLayoutControls();
-
         eventEmitter.onVideoLoadStart.invoke();
         loadVideoStarted = true;
-
         finishPlayerInitialization();
     }
 
@@ -1117,6 +1212,66 @@ public class ReactExoplayerView extends FrameLayout implements
         } catch(Exception e) {
             DebugLog.w(TAG, "Cloud not cleanup playback service");
         }
+    }
+
+    private MediaSource buildWvMediaSource(long cropStartMs, long cropEndMs) {
+        if (wvSDK == null) {
+            throw new IllegalStateException("Invalid wvSDK");
+        }
+
+        config.setDisableDisconnectError(this.disableDisconnectError);
+
+        DataSource.Factory dataSourceFactory = wvSDK.getDataSourceFactory();
+        DefaultMediaSourceFactory mediaSourceFactory = new DefaultMediaSourceFactory(dataSourceFactory);
+
+        mediaSourceFactory.setLoadErrorHandlingPolicy(
+                config.buildLoadErrorHandlingPolicy(minLoadRetryCount));
+
+        MediaSource originalMediaSource = wvSDK.getMediaSource();
+        MediaItem originalMediaItem = originalMediaSource.getMediaItem();
+        MediaItem.Builder mediaItemBuilder = originalMediaItem.buildUpon();
+
+        // CustomMetadata 설정
+        MediaMetadata customMetadata = ConfigurationUtils.buildCustomMetadata(source.getMetadata());
+        if (customMetadata != null) {
+            mediaItemBuilder.setMediaMetadata(customMetadata);
+        }
+
+        // AdsConfiguration 설정
+        if (adTagUrl != null) {
+            mediaItemBuilder.setAdsConfiguration(
+                    new MediaItem.AdsConfiguration.Builder(adTagUrl).build()
+            );
+        }
+
+        // LiveConfiguration 설정
+        MediaItem.LiveConfiguration.Builder liveConfiguration = ConfigurationUtils.getLiveConfiguration(bufferConfig);
+        mediaItemBuilder.setLiveConfiguration(liveConfiguration.build());
+
+        MediaItem mediaItem = mediaItemBuilder.build();
+        MediaSource mediaSource;
+        DownloadState downloadState = wvSDK.getDownloadState();
+        byte[] keySetId = wvSDK.getKeySetId();
+        if ((downloadState.equals(DownloadState.COMPLETED) ||
+                downloadState.equals(DownloadState.DOWNLOADING)) && keySetId != null) {
+            mediaSource = mediaSourceFactory
+                    .createMediaSource(mediaItem);
+        } else {
+            mediaSource = mediaSourceFactory
+                    .setDrmSessionManagerProvider((_mediaItem) -> wvSDK.getDrmSessionManager())
+                    .createMediaSource(mediaItem);
+        }
+
+        // Clipping 적용 (필요한 경우)
+        if (cropStartMs >= 0 && cropEndMs >= 0) {
+            return new ClippingMediaSource(mediaSource, cropStartMs * 1000, cropEndMs * 1000);
+        } else if (cropStartMs >= 0) {
+            return new ClippingMediaSource(mediaSource, cropStartMs * 1000, C.TIME_END_OF_SOURCE);
+        } else if (cropEndMs >= 0) {
+            return new ClippingMediaSource(mediaSource, 0, cropEndMs * 1000);
+        }
+
+        return mediaSource;
     }
 
     private MediaSource buildMediaSource(Uri uri, String overrideExtension, DrmSessionManager drmSessionManager, long cropStartMs, long cropEndMs) {
@@ -1964,6 +2119,29 @@ public class ReactExoplayerView extends FrameLayout implements
             clearSrc();
         }
     }
+
+    public void setMultiDrmJson(final String json) {
+        if (json != null) {
+            Gson gson = new Gson();
+            ContentData contentData = gson.fromJson(json, ContentData.class);
+            Uri uri = Uri.parse(contentData.getUrl());
+            boolean isSourceEqual = uri.equals(source.getUri());
+            source.updateUri(uri);
+            wvSDK = DrWvSDK.createWvSDK(
+                    this.themedReactContext,
+                    contentData
+            );
+
+            if (cmcdConfigurationFactory != null) {
+                DrWvSDK.setCmcdConfigurationFactory(cmcdConfigurationFactory::createCmcdConfiguration);
+            }
+
+            if (!isSourceEqual) {
+                reloadSource();
+            }
+        }
+    }
+
     public void clearSrc() {
         if (source.getUri() != null) {
             if (player != null) {
@@ -2493,6 +2671,10 @@ public class ReactExoplayerView extends FrameLayout implements
 
     public void setHideShutterView(boolean hideShutterView) {
         exoPlayerView.setHideShutterView(hideShutterView);
+    }
+
+    public void setUseTextureView(boolean useTextureView) {
+        setViewType(2);
     }
 
     @Override

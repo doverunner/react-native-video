@@ -25,6 +25,7 @@ buildscript {
     }
 
     repositories {
+        mavenLocal()
         mavenCentral()
     }
 
@@ -207,6 +208,7 @@ def reactNativeArchitectures() {
 }
 
 repositories {
+    mavenLocal()
     google()
     maven {
         // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
@@ -218,6 +220,7 @@ repositories {
 def media3_version = safeExtGet('media3Version')
 def androidxCore_version = safeExtGet('androidxCoreVersion')
 def androidxActivity_version = safeExtGet('androidxActivityVersion')
+def widevineSdk_version = safeExtGet('widevineSdkVersion')
 
 dependencies {
     // For < 0.71, this will be from the local maven repo
@@ -227,6 +230,8 @@ dependencies {
 
     implementation "androidx.core:core-ktx:$androidxCore_version"
     implementation "androidx.activity:activity-ktx:$androidxActivity_version"
+
+    implementation "com.doverunner:widevine:$widevineSdk_version"
 
     // For media playback using ExoPlayer
     if (media3_buildFromSource) {

@@ -84,7 +84,15 @@ class ReactExoplayerViewManager(private val config: ReactExoplayerConfig) : View
     @ReactProp(name = PROP_SRC)
     fun setSrc(videoView: ReactExoplayerView, src: ReadableMap?) {
         val context = videoView.context.applicationContext
-        videoView.setSrc(Source.parse(src, context))
+        val source = Source.parse(src, context)
+        if (source.uri == null) {
+            videoView.clearSrc()
+        } else if (!TextUtils.isEmpty(source.headers["MultiDrmJson"])) {
+            videoView.setMultiDrmJson(source.headers["MultiDrmJson"]);
+            videoView.setUseTextureView(false);
+        } else {
+            videoView.setSrc(source)
+        }
     }
 
     @ReactProp(name = PROP_RESIZE_MODE)

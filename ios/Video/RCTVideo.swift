@@ -5,6 +5,7 @@ import Foundation
     import GoogleInteractiveMediaAds
 #endif
 import React
+import DOVERUNNERFairPlay
 
 // MARK: - RCTVideo
 
@@ -28,6 +29,8 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
 
     /* For sending videoProgress events */
     private var _controls = false
+
+    var _doverunnerSdk: DOVERUNNERFairPlay?
 
     /* Keep track of any modifiers, need to be applied after each play */
     var _audioOutput: String = "speaker"
@@ -270,6 +273,8 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
                 object: nil
             )
         #endif
+
+        _doverunnerSdk = DOVERUNNERFairPlay()
 
         _playerObserver._handlers = self
         #if USE_VIDEO_CACHING
@@ -627,6 +632,52 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         }
         self.isSetSourceOngoing = true
 
+        let videoSource = VideoSource(source)
+        guard let multiDrmJsonString = videoSource.requestHeaders?["MultiDrmJson"] as? String,
+              let data = multiDrmJsonString.data(using: .utf8) else {
+            DebugLog("Error: String to data conversion error.")
+            return
+        }
+        var playerItem: AVPlayerItem?
+        do {
+            guard let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
+                DebugLog("Failed to parse JSON")
+                return
+            }
+
+            if let contentUrl = json["url"] as? String,
+               let drmConfig = json["drmConfig"] as? [String: Any] {
+                let siteId = drmConfig["siteId"] as? String ?? ""
+                let contentId = drmConfig["contentId"] as? String ?? ""
+                let drmLicenseUrl = drmConfig["drmLicenseUrl"] as? String ?? ""
+                let token = drmConfig["token"] as? String ?? ""
+                let customData = drmConfig["customData"] as? String ?? ""
+                var certificateUrl = drmConfig["certificateUrl"] as? String ?? ""
+                if certificateUrl == "" || certificateUrl.isEmpty || certificateUrl == String() {
+                    certificateUrl = "https://drm-license.doverunner.com/ri/fpsKeyManager.do?siteId=" + siteId
+                }
+                
+                guard let url = URL(string: contentUrl) else {
+                    DebugLog("Invalid content URL")
+                    return
+                }
+                
+                let urlAsset = AVURLAsset(url: url)
+                playerItem = AVPlayerItem(asset: urlAsset)
+                let config = FairPlayConfiguration(avURLAsset: urlAsset,
+                                                   contentId: contentId,
+                                                   certificateUrl: certificateUrl,
+                                                   authData: token,
+                                                   delegate: self,
+                                                   licenseUrl: drmLicenseUrl)
+                _doverunnerSdk?.prepare(drm: config)
+            } else {
+                DebugLog("Missing or invalid 'url' or 'drmConfig' in JSON")
+            }
+        } catch {
+            DebugLog("Error parsing JSON: \(error.localizedDescription)")
+        }
+
         let initializeSource = {
             self._source = VideoSource(source)
             if self._source?.uri == nil || self._source?.uri == "" {
@@ -651,7 +702,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
                 do {
                     guard let self else { throw NSError(domain: "", code: 0, userInfo: nil) }
 
-                    let playerItem = try await self.preparePlayerItem()
+                    //let playerItem = try await self.preparePlayerItem()
                     try await self.setupPlayer(playerItem: playerItem)
                 } catch {
                     DebugLog("An error occurred: \(error.localizedDescription)")
@@ -1841,4 +1892,55 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     // Workaround for #3418 - https://github.com/TheWidlarzGroup/react-native-video/issues/3418#issuecomment-2043508862
     @objc
     func setOnClick(_: Any) {}
+}
+
+extension RCTVideo: FairPlayLicenseDelegate {
+    func license(result: LicenseResult) {
+        DebugLog("Licenss Result")
+        DebugLog("Licenss Result isSuccess : \(result.isSuccess)")
+        DebugLog("Licenss Result contentId : \(result.contentId)")
+        
+        var errorMessage = ""
+        var code: Int = 0
+        if result.isSuccess == false {
+            if let error = result.error {
+                switch error {
+                    case .database(comment: let comment):
+                        errorMessage = comment
+                    case .server(errorCode: let errorCode, comment: let comment):
+                        code = errorCode
+                        errorMessage = "code : \(errorCode), comment: \(comment)"
+                    case .network(errorCode: let errorCode, comment: let comment):
+                        code = errorCode
+                        errorMessage = "code : \(errorCode), comment: \(comment)"
+                    case .system(errorCode: let errorCode, comment: let comment):
+                        code = errorCode
+                        errorMessage = "code : \(errorCode), comment: \(comment)"
+                    case .failed(errorCode: let errorCode, comment: let comment):
+                        code = errorCode
+                        errorMessage = "code : \(errorCode), comment: \(comment)"
+                    case .unknown(errorCode: let errorCode, comment: let comment):
+                        code = errorCode
+                        errorMessage = "code : \(errorCode), comment: \(comment)"
+                    case .invalid(comment: let comment):
+                        errorMessage = "comment: \(comment)"
+                    default:
+                        errorMessage = "comment: \(error)"
+                        break
+                }
+            }
+
+            onVideoError?(
+                [
+                    "error": [
+                        "code": NSNumber(value: code),
+                        "localizedDescription": errorMessage,
+                        "localizedFailureReason": errorMessage,
+                        "domain": "MultiDrmSdkError",
+                    ],
+                    "target": reactTag as Any,
+                ]
+            )
+        }
+    }
 }

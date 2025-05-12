@@ -703,7 +703,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
                     guard let self else { throw NSError(domain: "", code: 0, userInfo: nil) }
 
                     //let playerItem = try await self.preparePlayerItem()
-                    try await self.setupPlayer(playerItem: playerItem)
+                    try await self.setupPlayer(playerItem: playerItem!)
                 } catch {
                     DebugLog("An error occurred: \(error.localizedDescription)")
 

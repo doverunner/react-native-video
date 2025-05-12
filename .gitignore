@@ -60,3 +60,5 @@ android/buildOutput_*
 lib/
 !src/lib
 *.tsbuildinfo
+
+.yarn/

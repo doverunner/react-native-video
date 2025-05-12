@@ -231,7 +231,11 @@ dependencies {
     implementation "androidx.core:core-ktx:$androidxCore_version"
     implementation "androidx.activity:activity-ktx:$androidxActivity_version"
 
+    // doverunner widevine
     implementation "com.doverunner:widevine:$widevineSdk_version"
+
+    // Gson
+    implementation "com.google.code.gson:gson:2.11"
 
     // For media playback using ExoPlayer
     if (media3_buildFromSource) {

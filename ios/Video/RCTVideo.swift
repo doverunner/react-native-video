@@ -5,7 +5,7 @@ import Foundation
     import GoogleInteractiveMediaAds
 #endif
 import React
-import DOVERUNNERFairPlay
+import DoveRunnerFairPlay
 
 // MARK: - RCTVideo
 
@@ -30,7 +30,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     /* For sending videoProgress events */
     private var _controls = false
 
-    var _doverunnerSdk: DOVERUNNERFairPlay?
+    var _doverunnerSdk: DoveRunnerFairPlay?
 
     /* Keep track of any modifiers, need to be applied after each play */
     var _audioOutput: String = "speaker"
@@ -274,7 +274,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
             )
         #endif
 
-        _doverunnerSdk = DOVERUNNERFairPlay()
+        _doverunnerSdk = DoveRunnerFairPlay()
 
         _playerObserver._handlers = self
         #if USE_VIDEO_CACHING

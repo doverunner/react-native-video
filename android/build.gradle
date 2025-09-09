@@ -7,6 +7,9 @@ buildscript {
     def kotlin_version = rootProject.ext.has('kotlinVersion') ? rootProject.ext.get('kotlinVersion') : project.properties['RNVideo_kotlinVersion']
     def requiredKotlinVersion = project.properties['RNVideo_kotlinVersion']
 
+    def androidx_version = rootProject.ext.has('androidxActivityVersion') ? rootProject.ext.get('androidxActivityVersion') : project.properties['RNVideo_androidxActivityVersion']
+    def requiredAndroidxVersion = project.properties['RNVideo_androidxActivityVersion']
+
     def isVersionAtLeast = { version, requiredVersion ->
         def (v1, v2) = [version, requiredVersion].collect { it.tokenize('.')*.toInteger() }
         for (int i = 0; i < Math.max(v1.size(), v2.size()); i++) {
@@ -22,6 +25,7 @@ buildscript {
     }
 
     repositories {
+        mavenLocal()
         mavenCentral()
     }
 
@@ -34,6 +38,11 @@ buildscript {
             throw new GradleException("Kotlin version mismatch: Project is using Kotlin version $kotlin_version, but it must be at least $requiredKotlinVersion. Please update the Kotlin version.")
         } else {
             println("Kotlin version is correct: $kotlin_version")
+        }
+        if (!isVersionAtLeast(androidx_version, requiredAndroidxVersion)) {
+            throw new GradleException("AndroidX version mismatch: Project is using AndroidX version $androidx_version, but it must be at least $requiredAndroidxVersion. Please update the AndroidX version.")
+        } else {
+            println("AndroidX version is correct: $androidx_version")
         }
     }
 }
@@ -91,9 +100,10 @@ def configStringPath = ExoplayerDependencies
         .concat("buildFromSource:$media3_buildFromSource")
         .md5()
 
-if (isNewArchitectureEnabled()) {
-    apply plugin: "com.facebook.react"
-}
+// commented as new architecture not yet fully supported
+// if (isNewArchitectureEnabled()) {
+//     apply plugin: "com.facebook.react"
+// }
 
 android {
     if (supportsNamespace()) {
@@ -198,8 +208,8 @@ def reactNativeArchitectures() {
 }
 
 repositories {
-    google()
     mavenLocal()
+    google()
     maven {
         // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
         url "$rootDir/../node_modules/react-native/android"
@@ -210,6 +220,7 @@ repositories {
 def media3_version = safeExtGet('media3Version')
 def androidxCore_version = safeExtGet('androidxCoreVersion')
 def androidxActivity_version = safeExtGet('androidxActivityVersion')
+def widevineSdk_version = safeExtGet('widevineSdkVersion')
 
 dependencies {
     // For < 0.71, this will be from the local maven repo
@@ -220,8 +231,8 @@ dependencies {
     implementation "androidx.core:core-ktx:$androidxCore_version"
     implementation "androidx.activity:activity-ktx:$androidxActivity_version"
 
-    // pallycon widevine
-    implementation "com.pallycon:widevine:4.3.1"
+    // doverunner widevine
+    implementation "com.doverunner:widevine:$widevineSdk_version"
 
     // Gson
     implementation "com.google.code.gson:gson:2.11"

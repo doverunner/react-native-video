@@ -16,8 +16,7 @@ Pod::Spec.new do |s|
 
   s.homepage       = 'https://github.com/TheWidlarzGroup/react-native-video'
   s.source         = { :git => "https://github.com/TheWidlarzGroup/react-native-video.git", :tag => "v#{s.version}" }
-  s.platforms      = { :ios => "13.0", :tvos => "13.0", :visionos => "1.0" }
-  s.dependency "PallyConFPSSDK"
+  s.platforms      = { :ios => "14.0", :tvos => "14.0", :visionos => "1.0" }
 
   if fabric_enabled
     s.subspec "Fabric" do |ss|

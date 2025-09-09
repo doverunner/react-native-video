@@ -7,7 +7,7 @@
 
 import AVFoundation
 
-class DRMManager: NSObject {
+class DRMManager: NSObject, DRMManagerSpec {
     static let queue = DispatchQueue(label: "RNVideoContentKeyDelegateQueue")
     let contentKeySession: AVContentKeySession?
 
@@ -72,7 +72,7 @@ class DRMManager: NSObject {
                         try keyRequest.respondByRequestingPersistableContentKeyRequestAndReturnError()
                         return
                     #else
-                        throw RCTVideoError.offlineDRMNotSuported
+                        throw RCTVideoError.offlineDRMNotSupported
                     #endif
                 }
 

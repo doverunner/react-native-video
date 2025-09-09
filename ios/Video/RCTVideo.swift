@@ -5,12 +5,12 @@ import Foundation
     import GoogleInteractiveMediaAds
 #endif
 import React
-import PallyConFPSSDK
+import DoveRunnerFairPlay
 
 // MARK: - RCTVideo
 
 class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverHandler {
-    private var _player: AVPlayer?
+    var _player: AVPlayer?
     private var _playerItem: AVPlayerItem?
     private var _source: VideoSource?
     private var _playerLayer: AVPlayerLayer?
@@ -18,7 +18,6 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
 
     private var _playerViewController: RCTVideoPlayerViewController?
     private var _videoURL: NSURL?
-    private var _localSourceEncryptionKeyScheme: String?
 
     /* Required to publish events */
     private var _eventDispatcher: RCTEventDispatcher?
@@ -30,11 +29,11 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
 
     /* For sending videoProgress events */
     private var _controls = false
-    
-    var _pallyconsdk: PallyConFPSSDK?
+
+    var _doverunnerSdk: DoveRunnerFairPlay?
 
     /* Keep track of any modifiers, need to be applied after each play */
-    private var _audioOutput: String = "speaker"
+    var _audioOutput: String = "speaker"
     private var _volume: Float = 1.0
     private var _rate: Float = 1.0
     private var _maxBitRate: Float?
@@ -48,12 +47,12 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     private var _selectedTextTrackCriteria: SelectedTrackCriteria = .none()
     private var _selectedAudioTrackCriteria: SelectedTrackCriteria = .none()
     private var _playbackStalled = false
-    private var _playInBackground = false
+    var _playInBackground = false
     private var _preventsDisplaySleepDuringVideoPlayback = true
     private var _preferredForwardBufferDuration: Float = 0.0
     private var _playWhenInactive = false
-    private var _ignoreSilentSwitch: String = "inherit" // inherit, ignore, obey
-    private var _mixWithOthers: String = "inherit" // inherit, mix, duck
+    var _ignoreSilentSwitch: String = "inherit" // inherit, ignore, obey
+    var _mixWithOthers: String = "inherit" // inherit, mix, duck
     private var _resizeMode: String = "cover"
     private var _fullscreen = false
     private var _fullscreenAutorotate = true
@@ -64,20 +63,24 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     private var _filterEnabled = false
     private var _presentingViewController: UIViewController?
     private var _startPosition: Float64 = -1
-    private var _showNotificationControls = false
+    var _disableAudioSessionManagement: Bool = false
+    var _showNotificationControls = false
     // Buffer last bitrate value received. Initialized to -2 to ensure -1 (sometimes reported by AVPlayer) is not missed
     private var _lastBitrate = -2.0
-    private var _pictureInPictureEnabled = false {
+    private var _enterPictureInPictureOnLeave = false {
         didSet {
-            #if os(iOS)
-                if _pictureInPictureEnabled {
-                    initPictureinPicture()
+            if isPictureInPictureActive() { return }
+            if _enterPictureInPictureOnLeave {
+                initPictureinPicture()
+                if #available(iOS 9.0, tvOS 14.0, *) {
                     _playerViewController?.allowsPictureInPicturePlayback = true
-                } else {
-                    _pip?.deinitPipController()
+                }
+            } else {
+                _pip?.deinitPipController()
+                if #available(iOS 9.0, tvOS 14.0, *) {
                     _playerViewController?.allowsPictureInPicturePlayback = false
                 }
-            #endif
+            }
         }
     }
 
@@ -90,8 +93,6 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     }
 
     /* IMA Ads */
-    private var _adTagUrl: String?
-    private var _adLanguage: String?
     #if USE_GOOGLE_IMA
         private var _imaAdsManager: RCTIMAAdsManager!
         /* Playhead used by the SDK to track content video progress and insert mid-rolls. */
@@ -100,16 +101,14 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     private var _didRequestAds = false
     private var _adPlaying = false
 
-    private lazy var _drmManager: DRMManager? = DRMManager()
+    private lazy var _drmManager: DRMManagerSpec? = ReactNativeVideoManager.shared.getDRMManager()
     private var _playerObserver: RCTPlayerObserver = .init()
 
     #if USE_VIDEO_CACHING
         private let _videoCache: RCTVideoCachingHandler = .init()
     #endif
 
-    #if os(iOS)
-        private var _pip: RCTPictureInPicture?
-    #endif
+    private var _pip: RCTPictureInPicture?
 
     // Events
     @objc var onVideoLoadStart: RCTDirectEventBlock?
@@ -172,11 +171,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         onRestoreUserInterfaceForPictureInPictureStop?([:])
     }
 
-    func isPipEnabled() -> Bool {
-        return _pictureInPictureEnabled
-    }
-
-    func isPipActive() -> Bool {
+    func isPictureInPictureActive() -> Bool {
         #if os(iOS)
             return _pip?._pipController?.isPictureInPictureActive == true
         #else
@@ -186,15 +181,17 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
 
     func initPictureinPicture() {
         #if os(iOS)
-            _pip = RCTPictureInPicture({ [weak self] in
-                self?._onPictureInPictureEnter()
-            }, { [weak self] in
-                self?._onPictureInPictureExit()
-            }, { [weak self] in
-                self?.onRestoreUserInterfaceForPictureInPictureStop?([:])
-            })
+            if _pip == nil {
+                _pip = RCTPictureInPicture({ [weak self] in
+                    self?._onPictureInPictureEnter()
+                }, { [weak self] in
+                    self?._onPictureInPictureExit()
+                }, { [weak self] in
+                    self?.onRestoreUserInterfaceForPictureInPictureStop?([:])
+                })
+            }
 
-            if _playerLayer != nil && !_controls {
+            if _playerLayer != nil && !_controls && _pip?._pipController == nil {
                 _pip?.setupPipController(_playerLayer)
             }
         #else
@@ -206,17 +203,16 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         super.init(frame: CGRect(x: 0, y: 0, width: 100, height: 100))
         ReactNativeVideoManager.shared.registerView(newInstance: self)
         #if USE_GOOGLE_IMA
-            _imaAdsManager = RCTIMAAdsManager(video: self, pipEnabled: isPipEnabled)
+            _imaAdsManager = RCTIMAAdsManager(video: self, isPictureInPictureActive: isPictureInPictureActive)
         #endif
 
         _eventDispatcher = eventDispatcher
 
+        AudioSessionManager.shared.registerView(view: self)
+
         #if os(iOS)
-            if _pictureInPictureEnabled {
+            if _enterPictureInPictureOnLeave {
                 initPictureinPicture()
-                _playerViewController?.allowsPictureInPicturePlayback = true
-            } else {
-                _playerViewController?.allowsPictureInPicturePlayback = false
             }
         #endif
 
@@ -250,14 +246,37 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
 
         NotificationCenter.default.addObserver(
             self,
+            selector: #selector(screenWillLock),
+            name: UIApplication.protectedDataWillBecomeUnavailableNotification,
+            object: nil
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(screenDidUnlock),
+            name: UIApplication.protectedDataDidBecomeAvailableNotification,
+            object: nil
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
             selector: #selector(audioRouteChanged(notification:)),
             name: AVAudioSession.routeChangeNotification,
             object: nil
         )
+
+        #if os(iOS)
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleRotation),
+                name: UIDevice.orientationDidChangeNotification,
+                object: nil
+            )
+        #endif
+
+        _doverunnerSdk = DoveRunnerFairPlay()
+
         _playerObserver._handlers = self
-        
-        _pallyconsdk = PallyConFPSSDK()
-        
         #if USE_VIDEO_CACHING
             _videoCache.playerItemPrepareText = playerItemPrepareText
         #endif
@@ -266,7 +285,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     required init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
         #if USE_GOOGLE_IMA
-            _imaAdsManager = RCTIMAAdsManager(video: self, pipEnabled: isPipEnabled)
+            _imaAdsManager = RCTIMAAdsManager(video: self, isPictureInPictureActive: isPictureInPictureActive)
         #endif
     }
 
@@ -275,6 +294,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
             _imaAdsManager.releaseAds()
             _imaAdsManager = nil
         #endif
+        AudioSessionManager.shared.unregisterView(view: self)
 
         NotificationCenter.default.removeObserver(self)
         self.removePlayerLayer()
@@ -287,7 +307,9 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         #if os(iOS)
             _pip = nil
         #endif
+
         ReactNativeVideoManager.shared.unregisterView(newInstance: self)
+        AudioSessionManager.shared.unregisterView(view: self)
     }
 
     // MARK: - App lifecycle handlers
@@ -299,6 +321,28 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
             let isExternalPlaybackActive = _player?.isExternalPlaybackActive ?? false
         #endif
         return isExternalPlaybackActive
+    }
+
+    @objc
+    func handleRotation() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+
+            self.setNeedsLayout()
+            self.layoutIfNeeded()
+
+            if let playerViewController = self._playerViewController {
+                playerViewController.view.frame = UIScreen.main.bounds
+                playerViewController.view.setNeedsLayout()
+                playerViewController.view.layoutIfNeeded()
+
+                // Update content overlay and subviews
+                playerViewController.contentOverlayView?.frame = UIScreen.main.bounds
+                for subview in playerViewController.contentOverlayView?.subviews ?? [] {
+                    subview.frame = UIScreen.main.bounds
+                }
+            }
+        }
     }
 
     @objc
@@ -322,8 +366,12 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
 
     @objc
     func applicationDidEnterBackground(notification _: NSNotification!) {
+        if !_paused && isPictureInPictureActive() {
+            _player?.play()
+            _player?.rate = _rate
+        }
         let isExternalPlaybackActive = getIsExternalPlaybackActive()
-        if !_playInBackground || isExternalPlaybackActive || isPipActive() { return }
+        if !_playInBackground || isExternalPlaybackActive || isPictureInPictureActive() { return }
         // Needed to play sound in background. See https://developer.apple.com/library/ios/qa/qa1668/_index.html
         _playerLayer?.player = nil
         _playerViewController?.player = nil
@@ -334,6 +382,24 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         self.applyModifiers()
         _playerLayer?.player = _player
         _playerViewController?.player = _player
+    }
+
+    @objc
+    func screenWillLock() {
+        let isActiveBackgroundPip = isPictureInPictureActive() && UIApplication.shared.applicationState != .active
+        if _playInBackground || !_isPlaying || !isActiveBackgroundPip { return }
+
+        _player?.pause()
+        _player?.rate = 0.0
+    }
+
+    @objc
+    func screenDidUnlock() {
+        let isActiveBackgroundPip = isPictureInPictureActive() && UIApplication.shared.applicationState != .active
+        if _paused || !isActiveBackgroundPip { return }
+
+        _player?.play()
+        _player?.rate = _rate
     }
 
     // MARK: - Audio events
@@ -381,7 +447,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
 
         if currentTimeSecs >= 0 {
             #if USE_GOOGLE_IMA
-                if !_didRequestAds && currentTimeSecs >= 0.0001 && _adTagUrl != nil {
+                if !_didRequestAds && currentTimeSecs >= 0.0001 && _source?.adParams.adTagUrl != nil {
                     _imaAdsManager.requestAds()
                     _didRequestAds = true
                 }
@@ -432,17 +498,20 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         ])
 
         if let uri = source.uri, uri.starts(with: "ph://") {
-            let photoAsset = await RCTVideoUtils.preparePHAsset(uri: uri)
-            return await playerItemPrepareText(source: source, asset: photoAsset, assetOptions: nil, uri: source.uri ?? "")
-        }
+            guard let photoAsset = await RCTVideoUtils.preparePHAsset(uri: uri) else {
+                DebugLog("Could not load asset '\(String(describing: _source))'")
+                throw NSError(domain: "", code: 0, userInfo: nil)
+            }
 
-        guard let assetResult = RCTVideoUtils.prepareAsset(source: source),
-              let asset = assetResult.asset,
-              let assetOptions = assetResult.assetOptions else {
-            DebugLog("Could not find video URL in source '\(String(describing: _source))'")
-            isSetSourceOngoing = false
-            applyNextSource()
-            throw NSError(domain: "", code: 0, userInfo: nil)
+            if let overridePlayerAsset = await ReactNativeVideoManager.shared.overridePlayerAsset(source: source, asset: photoAsset) {
+                if overridePlayerAsset.type == .full {
+                    return AVPlayerItem(asset: overridePlayerAsset.asset)
+                }
+
+                return await playerItemPrepareText(source: source, asset: overridePlayerAsset.asset, assetOptions: nil, uri: source.uri ?? "")
+            }
+
+            return await playerItemPrepareText(source: source, asset: photoAsset, assetOptions: nil, uri: source.uri ?? "")
         }
 
         guard let assetResult = RCTVideoUtils.prepareAsset(source: source),
@@ -466,7 +535,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
 
         if source.drm.json != nil {
             if _drmManager == nil {
-                _drmManager = DRMManager()
+                _drmManager = ReactNativeVideoManager.shared.getDRMManager()
             }
 
             _drmManager?.createContentKeyRequest(
@@ -476,6 +545,14 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
                 onVideoError: onVideoError,
                 onGetLicense: onGetLicense
             )
+        }
+
+        if let overridePlayerAsset = await ReactNativeVideoManager.shared.overridePlayerAsset(source: source, asset: asset) {
+            if overridePlayerAsset.type == .full {
+                return AVPlayerItem(asset: overridePlayerAsset.asset)
+            }
+
+            return await playerItemPrepareText(source: source, asset: overridePlayerAsset.asset, assetOptions: assetOptions, uri: source.uri ?? "")
         }
 
         return await playerItemPrepareText(source: source, asset: asset, assetOptions: assetOptions, uri: source.uri ?? "")
@@ -509,7 +586,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
             }
         } else {
             #if !os(tvOS) && !os(visionOS)
-                if #available(iOS 16.0, *) {
+                if #available(iOS 16.0, macCatalyst 18.0, *) {
                     // This feature caused crashes, if the app was put in bg, before the source change
                     // https://github.com/TheWidlarzGroup/react-native-video/issues/3900
                     self._playerViewController?.allowsVideoFrameAnalysis = false
@@ -517,7 +594,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
             #endif
             _player?.replaceCurrentItem(with: playerItem)
             #if !os(tvOS) && !os(visionOS)
-                if #available(iOS 16.0, *) {
+                if #available(iOS 16.0, macCatalyst 18.0, *) {
                     self._playerViewController?.allowsVideoFrameAnalysis = true
                 }
             #endif
@@ -534,7 +611,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         }
 
         #if USE_GOOGLE_IMA
-            if _adTagUrl != nil {
+            if _source?.adParams.adTagUrl != nil {
                 // Set up your content playhead and contentComplete callback.
                 _contentPlayhead = IMAAVPlayerContentPlayhead(avPlayer: _player!)
 
@@ -554,10 +631,10 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
             return
         }
         self.isSetSourceOngoing = true
-        
+
         let videoSource = VideoSource(source)
-        guard let pallyConJsonString = videoSource.requestHeaders?["PallyConJson"] as? String,
-              let data = pallyConJsonString.data(using: .utf8) else {
+        guard let multiDrmJsonString = videoSource.requestHeaders?["MultiDrmJson"] as? String,
+              let data = multiDrmJsonString.data(using: .utf8) else {
             DebugLog("Error: String to data conversion error.")
             return
         }
@@ -577,7 +654,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
                 let customData = drmConfig["customData"] as? String ?? ""
                 var certificateUrl = drmConfig["certificateUrl"] as? String ?? ""
                 if certificateUrl == "" || certificateUrl.isEmpty || certificateUrl == String() {
-                    certificateUrl = "https://license-global.pallycon.com/ri/fpsKeyManager.do?siteId=" + siteId
+                    certificateUrl = "https://drm-license.doverunner.com/ri/fpsKeyManager.do?siteId=" + siteId
                 }
                 
                 guard let url = URL(string: contentUrl) else {
@@ -587,13 +664,13 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
                 
                 let urlAsset = AVURLAsset(url: url)
                 playerItem = AVPlayerItem(asset: urlAsset)
-                let config = PallyConDrmConfiguration(avURLAsset: urlAsset,
-                                                      contentId: contentId,
-                                                      certificateUrl: certificateUrl,
-                                                      authData: token,
-                                                      delegate: self,
-                                                      licenseUrl: drmLicenseUrl)
-                _pallyconsdk?.prepare(Content: config)
+                let config = FairPlayConfiguration(avURLAsset: urlAsset,
+                                                   contentId: contentId,
+                                                   certificateUrl: certificateUrl,
+                                                   authData: token,
+                                                   delegate: self,
+                                                   licenseUrl: drmLicenseUrl)
+                _doverunnerSdk?.prepare(drm: config)
             } else {
                 DebugLog("Missing or invalid 'url' or 'drmConfig' in JSON")
             }
@@ -765,19 +842,13 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     }
 
     @objc
-    func setPictureInPicture(_ pictureInPicture: Bool) {
+    func setEnterPictureInPictureOnLeave(_ enterPictureInPictureOnLeave: Bool) {
         #if os(iOS)
-            let audioSession = AVAudioSession.sharedInstance()
-            do {
-                try audioSession.setCategory(.playback)
-                try audioSession.setActive(true, options: [])
-            } catch {}
-            if pictureInPicture {
-                _pictureInPictureEnabled = true
-            } else {
-                _pictureInPictureEnabled = false
+            if _enterPictureInPictureOnLeave != enterPictureInPictureOnLeave {
+                _enterPictureInPictureOnLeave = enterPictureInPictureOnLeave
+
+                AudioSessionManager.shared.playerPropertiesChanged(view: self)
             }
-            _pip?.setPictureInPicture(pictureInPicture)
         #endif
     }
 
@@ -795,14 +866,15 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     @objc
     func setIgnoreSilentSwitch(_ ignoreSilentSwitch: String?) {
         _ignoreSilentSwitch = ignoreSilentSwitch ?? "inherit"
-        RCTPlayerOperations.configureAudio(ignoreSilentSwitch: _ignoreSilentSwitch, mixWithOthers: _mixWithOthers, audioOutput: _audioOutput)
-        applyModifiers()
+
+        AudioSessionManager.shared.playerPropertiesChanged(view: self)
     }
 
     @objc
     func setMixWithOthers(_ mixWithOthers: String?) {
         _mixWithOthers = mixWithOthers ?? "inherit"
-        applyModifiers()
+
+        AudioSessionManager.shared.playerPropertiesChanged(view: self)
     }
 
     @objc
@@ -817,8 +889,6 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
                 _player?.rate = 0.0
             }
         } else {
-            RCTPlayerOperations.configureAudio(ignoreSilentSwitch: _ignoreSilentSwitch, mixWithOthers: _mixWithOthers, audioOutput: _audioOutput)
-
             if _adPlaying {
                 #if USE_GOOGLE_IMA
                     _imaAdsManager.getAdsManager()?.resume()
@@ -835,6 +905,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         }
 
         _paused = paused
+        AudioSessionManager.shared.playerPropertiesChanged(view: self)
     }
 
     @objc
@@ -899,18 +970,9 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     @objc
     func setAudioOutput(_ audioOutput: String) {
         _audioOutput = audioOutput
-        RCTPlayerOperations.configureAudio(ignoreSilentSwitch: _ignoreSilentSwitch, mixWithOthers: _mixWithOthers, audioOutput: _audioOutput)
-        do {
-            if audioOutput == "speaker" {
-                #if os(iOS) || os(visionOS)
-                    try AVAudioSession.sharedInstance().overrideOutputAudioPort(AVAudioSession.PortOverride.speaker)
-                #endif
-            } else if audioOutput == "earpiece" {
-                try AVAudioSession.sharedInstance().overrideOutputAudioPort(AVAudioSession.PortOverride.none)
-            }
-        } catch {
-            print("Error occurred: \(error.localizedDescription)")
-        }
+
+        // Notify AudioSessionManager about the change instead of directly configuring
+        AudioSessionManager.shared.playerPropertiesChanged(view: self)
     }
 
     @objc
@@ -985,13 +1047,14 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         }
 
         setSelectedTextTrack(_selectedTextTrackCriteria)
-        setAudioOutput(_audioOutput)
         setSelectedAudioTrack(_selectedAudioTrackCriteria)
         setResizeMode(_resizeMode)
         setRepeat(_repeat)
         setControls(_controls)
         setPaused(_paused)
         setAllowsExternalPlayback(_allowsExternalPlayback)
+
+        AudioSessionManager.shared.playerPropertiesChanged(view: self)
     }
 
     @objc
@@ -1022,10 +1085,16 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         guard let source = _source else { return }
         if !source.textTracks.isEmpty { // sideloaded text tracks
             RCTPlayerOperations.setSideloadedText(player: _player, textTracks: source.textTracks, criteria: _selectedTextTrackCriteria)
-        } else { // text tracks included in the HLS playlist§
-            Task {
-                await RCTPlayerOperations.setMediaSelectionTrackForCharacteristic(player: _player, characteristic: AVMediaCharacteristic.legible,
-                                                                                  criteria: _selectedTextTrackCriteria)
+        } else { // text tracks included in the HLS playlist
+            Task { [weak self] in
+                guard let self,
+                      let player = self._player else { return }
+
+                await RCTPlayerOperations.setMediaSelectionTrackForCharacteristic(
+                    player: player,
+                    characteristic: .legible,
+                    criteria: self._selectedTextTrackCriteria
+                )
             }
         }
     }
@@ -1080,6 +1149,19 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
                         self._fullscreenPlayerPresented = fullscreen
                         self._playerViewController?.autorotate = self._fullscreenAutorotate
 
+                        // update layout after entering fullscreen
+                        DispatchQueue.main.async {
+                            self._playerViewController?.view.frame = UIScreen.main.bounds
+                            self._playerViewController?.view.setNeedsLayout()
+                            self._playerViewController?.view.layoutIfNeeded()
+
+                            // update content overlay subviews
+                            self._playerViewController?.contentOverlayView?.frame = UIScreen.main.bounds
+                            for subview in self._playerViewController?.contentOverlayView?.subviews ?? [] {
+                                subview.frame = UIScreen.main.bounds
+                            }
+                        }
+
                         self.onVideoFullscreenPlayerDidPresent?(["target": self.reactTag as Any])
                     })
                 }
@@ -1090,6 +1172,12 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
                 self?.videoPlayerViewControllerDidDismiss(playerViewController: _playerViewController)
             })
             setControls(_controls)
+
+            // ensure layout updates after exiting fullscreen
+            DispatchQueue.main.async {
+                self.setNeedsLayout()
+                self.layoutIfNeeded()
+            }
         }
     }
 
@@ -1125,6 +1213,13 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
             let viewController: UIViewController! = self.reactViewController()
             viewController?.addChild(_playerViewController)
             self.addSubview(_playerViewController.view)
+
+            NSLayoutConstraint.activate([
+                _playerViewController.view.leadingAnchor.constraint(equalTo: self.leadingAnchor),
+                _playerViewController.view.trailingAnchor.constraint(equalTo: self.trailingAnchor),
+                _playerViewController.view.topAnchor.constraint(equalTo: self.topAnchor),
+                _playerViewController.view.bottomAnchor.constraint(equalTo: self.bottomAnchor),
+            ])
         }
 
         _playerObserver.playerViewController = _playerViewController
@@ -1141,8 +1236,16 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
 
         viewController.view.frame = self.bounds
         viewController.player = player
-        if #available(tvOS 14.0, *) {
-            viewController.allowsPictureInPicturePlayback = _pictureInPictureEnabled
+
+        // Set the initial playback speed in controls to match playback rate
+        if #available(iOS 16.0, tvOS 16.0, *) {
+            if let initialSpeed = viewController.speeds.first(where: { $0.rate == _rate }) {
+                viewController.selectSpeed(initialSpeed)
+            }
+        }
+
+        if #available(iOS 9.0, tvOS 14.0, *) {
+            viewController.allowsPictureInPicturePlayback = _enterPictureInPictureOnLeave
         }
         return viewController
     }
@@ -1163,7 +1266,7 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
             }
             self.layer.needsDisplayOnBoundsChange = true
             #if os(iOS)
-                if _pictureInPictureEnabled {
+                if _enterPictureInPictureOnLeave {
                     _pip?.setupPipController(_playerLayer)
                 }
             #endif
@@ -1200,6 +1303,11 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         } else {
             NowPlayingInfoCenterManager.shared.removePlayer(player: player)
         }
+    }
+
+    @objc
+    func setDisableAudioSessionManagement(_ disableAudioSessionManagement: Bool) {
+        _disableAudioSessionManagement = disableAudioSessionManagement
     }
 
     @objc
@@ -1269,16 +1377,11 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
     // MARK: - RCTIMAAdsManager
 
     func getAdLanguage() -> String? {
-        return _adLanguage
+        return _source?.adParams.adLanguage
     }
 
     func getAdTagUrl() -> String? {
-        return _adTagUrl
-    }
-
-    @objc
-    func setAdTagUrl(_ adTagUrl: String?) {
-        _adTagUrl = adTagUrl
+        return _source?.adParams.adTagUrl
     }
 
     #if USE_GOOGLE_IMA
@@ -1315,10 +1418,20 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         super.layoutSubviews()
         if _controls, let _playerViewController {
             _playerViewController.view.frame = bounds
+            _playerViewController.view.setNeedsLayout()
+            _playerViewController.view.layoutIfNeeded()
+
+            // ensure content overlay also resizes
+            _playerViewController.contentOverlayView?.frame = bounds
 
             // also adjust all subviews of contentOverlayView
             for subview in _playerViewController.contentOverlayView?.subviews ?? [] {
                 subview.frame = bounds
+            }
+
+            // ensure preferredContentSize is set when in fullscreen
+            if _fullscreenPlayerPresented {
+                _playerViewController.preferredContentSize = CGSize(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)
             }
         } else {
             CATransaction.begin()
@@ -1336,6 +1449,10 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
             player.pause()
             NowPlayingInfoCenterManager.shared.removePlayer(player: player)
         }
+
+        // Unregister from AudioSessionManager
+        AudioSessionManager.shared.unregisterView(view: self)
+
         _playerItem = nil
         _source = nil
         _chapters = nil
@@ -1522,24 +1639,16 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         }
 
         guard let _playerItem else { return }
-        let error = _playerItem.error as NSError?
-        var errorCode = error?.code ?? 0
-        var errorMessage = error?.localizedDescription ?? ""
-        
-        // 특정 오류 코드에 대한 처리
-        if errorCode == -42656 || errorCode == -42800 {
-            errorCode = 50000
-            errorMessage = "expired"
-        }
-        
         onVideoError?(
             [
                 "error": [
-                    "code": NSNumber(value: errorCode),
-                    "localizedDescription": errorMessage,
-                    "localizedFailureReason": error?.localizedFailureReason ?? "",
-                    "localizedRecoverySuggestion": error?.localizedRecoverySuggestion ?? "",
-                    "domain": error?.domain ?? "",
+                    "code": NSNumber(value: (_playerItem.error! as NSError).code),
+                    "localizedDescription": _playerItem.error?.localizedDescription == nil ? "" : _playerItem.error?.localizedDescription as Any,
+                    "localizedFailureReason": ((_playerItem.error! as NSError).localizedFailureReason == nil ?
+                        "" : (_playerItem.error! as NSError).localizedFailureReason) ?? "",
+                    "localizedRecoverySuggestion": ((_playerItem.error! as NSError).localizedRecoverySuggestion == nil ?
+                        "" : (_playerItem.error! as NSError).localizedRecoverySuggestion) ?? "",
+                    "domain": (_playerItem.error as! NSError).domain,
                 ],
                 "target": reactTag as Any,
             ]
@@ -1570,6 +1679,9 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
 
         guard _isPlaying != isPlaying else { return }
         _isPlaying = isPlaying
+        if _controls {
+            _paused = !isPlaying
+        }
         onVideoPlaybackStateChanged?(["isPlaying": isPlaying, "isSeeking": self._pendingSeek == true, "target": reactTag as Any])
     }
 
@@ -1640,8 +1752,10 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
                 }
             }
 
-            self.reactViewController().view.frame = bounds
-            self.reactViewController().view.setNeedsLayout()
+            if let reactVC = self.reactViewController() {
+                reactVC.view.frame = bounds
+                reactVC.view.setNeedsLayout()
+            }
         }
     }
 
@@ -1692,7 +1806,8 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
                 }
             )
         } else {
-            _playerObserver.removePlayerTimeObserver()
+            _player?.pause()
+            _player?.rate = 0.0
         }
     }
 
@@ -1745,53 +1860,83 @@ class RCTVideo: UIView, RCTVideoPlayerViewControllerDelegate, RCTPlayerObserverH
         }
     }
 
+    @objc
+    func enterPictureInPicture() {
+        if _pip?._pipController == nil {
+            initPictureinPicture()
+            if #available(iOS 9.0, tvOS 14.0, *) {
+                _playerViewController?.allowsPictureInPicturePlayback = true
+            }
+        }
+        _pip?.enterPictureInPicture()
+    }
+
+    @objc
+    func exitPictureInPicture() {
+        guard isPictureInPictureActive() else { return }
+
+        _pip?.exitPictureInPicture()
+        if _enterPictureInPictureOnLeave {
+            initPictureinPicture()
+            if #available(iOS 9.0, tvOS 14.0, *) {
+                _playerViewController?.allowsPictureInPicturePlayback = true
+            }
+        } else {
+            _pip?.deinitPipController()
+            if #available(iOS 9.0, tvOS 14.0, *) {
+                _playerViewController?.allowsPictureInPicturePlayback = false
+            }
+        }
+    }
+
     // Workaround for #3418 - https://github.com/TheWidlarzGroup/react-native-video/issues/3418#issuecomment-2043508862
     @objc
     func setOnClick(_: Any) {}
 }
 
-extension RCTVideo: PallyConFPSLicenseDelegate {
-    func license(result: PallyConResult) {
-        DebugLog("PallyCon Licenss Result")
-        DebugLog("PallyCon Licenss Result isSuccess : \(result.isSuccess)")
-        DebugLog("PallyCon Licenss Result contentId : \(result.contentId)")
+extension RCTVideo: FairPlayLicenseDelegate {
+    func license(result: LicenseResult) {
+        DebugLog("Licenss Result")
+        DebugLog("Licenss Result isSuccess : \(result.isSuccess)")
+        DebugLog("Licenss Result contentId : \(result.contentId)")
         
         var errorMessage = ""
         var code: Int = 0
-        if let error = result.error {
-            switch error {
-            case .database(comment: let comment):
-                errorMessage = comment
-            case .server(errorCode: let errorCode, comment: let comment):
-                code = errorCode
-                errorMessage = "code : \(errorCode), comment: \(comment)"
-            case .network(errorCode: let errorCode, comment: let comment):
-                code = errorCode
-                errorMessage = "code : \(errorCode), comment: \(comment)"
-            case .system(errorCode: let errorCode, comment: let comment):
-                code = errorCode
-                errorMessage = "code : \(errorCode), comment: \(comment)"
-            case .failed(errorCode: let errorCode, comment: let comment):
-                code = errorCode
-                errorMessage = "code : \(errorCode), comment: \(comment)"
-            case .unknown(errorCode: let errorCode, comment: let comment):
-                code = errorCode
-                errorMessage = "code : \(errorCode), comment: \(comment)"
-            case .invalid(comment: let comment):
-                errorMessage = "comment: \(comment)"
-            default:
-                errorMessage = "comment: \(error)"
-                break
+        if result.isSuccess == false {
+            if let error = result.error {
+                switch error {
+                    case .database(comment: let comment):
+                        errorMessage = comment
+                    case .server(errorCode: let errorCode, comment: let comment):
+                        code = errorCode
+                        errorMessage = "code : \(errorCode), comment: \(comment)"
+                    case .network(errorCode: let errorCode, comment: let comment):
+                        code = errorCode
+                        errorMessage = "code : \(errorCode), comment: \(comment)"
+                    case .system(errorCode: let errorCode, comment: let comment):
+                        code = errorCode
+                        errorMessage = "code : \(errorCode), comment: \(comment)"
+                    case .failed(errorCode: let errorCode, comment: let comment):
+                        code = errorCode
+                        errorMessage = "code : \(errorCode), comment: \(comment)"
+                    case .unknown(errorCode: let errorCode, comment: let comment):
+                        code = errorCode
+                        errorMessage = "code : \(errorCode), comment: \(comment)"
+                    case .invalid(comment: let comment):
+                        errorMessage = "comment: \(comment)"
+                    default:
+                        errorMessage = "comment: \(error)"
+                        break
+                }
             }
 
             onVideoError?(
                 [
                     "error": [
                         "code": NSNumber(value: code),
-                        "localizedDescription": "PallyConFPSSDK Error Message",
+                        "localizedDescription": errorMessage,
                         "localizedFailureReason": errorMessage,
-                        "localizedRecoverySuggestion": errorMessage,
-                        "domain": "",
+                        "domain": "MultiDrmSdkError",
                     ],
                     "target": reactTag as Any,
                 ]

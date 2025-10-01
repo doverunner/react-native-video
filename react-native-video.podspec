@@ -31,6 +31,8 @@ Pod::Spec.new do |s|
       ss.dependency "react-native-video/Fabric"
     end
 
+    ss.dependency "DoveRunnerFairPlay"
+
     if defined?($RNVideoUseGoogleIMA)
       Pod::UI.puts "RNVideo: enable IMA SDK"
 
@@ -57,7 +59,6 @@ Pod::Spec.new do |s|
     install_modules_dependencies(s)
   else
     s.dependency "React-Core"
-    s.dependency "DoveRunnerFairPlay"
 
     # Don't install the dependencies when we run `pod install` in the old architecture.
     if fabric_enabled then
